@@ -20,16 +20,19 @@ class Handwriting(Texture):
     def __init__(self, texture1=Texture(lambda u,v: (0,0,0)),
                        texture2=Texture(lambda u,v: (1,1,1)),
                        thickness=lambda t: 0.1,
-                       scale=4,
+                       scale=1,
                        strokes=30,
                        unique_chars=16,
                        connect_p=1.0):
-                       # XXX: Curviness \in [0,1]
+                       # XXX: Curviness \in [0,infty)
+                       # where a value of 1 is default random numbers
+                       # between [0,1) from random(), 0 is collinear,
+                       # and numbers larger than 1 scale random to be
+                       # in the range [0,curviness).
         self.tex1 = texture1     # Inside bezier curve
         self.tex2 = texture2     # Outside bezier curve
         self.scale = scale
-        # strokes is the number of unique strokes and chars
-        # gives the number of unique characters
+        # strokes is the number of unique strokes
         self.strokes = strokes
         self.octaves = 9         # Accurate to dimension / 2^(octaves+1) pixels
         self.eps = lambda t: thickness(t) / self.scale
@@ -47,26 +50,33 @@ class Handwriting(Texture):
                 for stroke in range(strokes)]
         # Create the characters which contain between [min_s, max_s] strokes
         min_s = 1
-        max_s = 5
-        # self.characters = [
-        #             [self.hash_table[(max_s*char + stroke) % hash_sz] % strokes
-        #             for stroke in range(random.randint(min_s, max_s))]
-        #         for char in range(unique_chars)]
+        max_s = 3
 
-        # array indexing goes [character][stroke][control point][uv coordinate]
-
+        # Create each character. self.characters indexing goes
+        # [character][stroke][control point][uv coordinate]
         self.characters = []
         for i in range(unique_chars):
             char = []
             for stroke in range(random.randint(min_s, max_s)):
                 char.append(self.hash_table[(max_s*i) + stroke] % strokes)
             self.characters.append(char)
-            # TODO: Get the strokes to connect
-            if i > 0 and random.random() < connect_p:
-                self.control_points[self.characters[i-1][0]][0][0] = 1.0
-                self.control_points[self.characters[i][0]][0][0] = 0.0
-                self.control_points[self.characters[i][0]][0][1] = (
-                        self.control_points[self.characters[i-1][0]][0][1])
+        
+        # Connect the strokes at the character edges
+        for i in range(unique_chars):
+            if random.random() < connect_p:
+                prev_uv = self.control_points[self.characters[i][-1]][3]
+                self.control_points[self.characters[i][-1]][3][0] = 1.0
+                self.control_points[self.characters[(i+1) % int(unique_chars)
+                        ][0]][0] = (0.0, prev_uv[1])
+                
+                if i == 0:
+                    print(self.control_points[self.characters[i][-1]])
+                
+                #self.characters[i][-1] = self.characters
+                #self.control_points[self.characters[i-1][0]][0][0] = 1.0
+                #self.control_points[self.characters[i][0]][0][0] = 0.0
+                #self.control_points[self.characters[i][0]][0][1] = (
+                        #self.control_points[self.characters[i-1][0]][0][1])
 
 
     def __repr__(self):
@@ -91,13 +101,6 @@ class Handwriting(Texture):
     def B(self, t, i):
         """Evaluate the ith bezier curve at t."""
         p = self.control_points[i]
-        # return np.array((
-        #        # u
-        #        (1-t)**3 * p[0][0] + 3*(1-t)**2 * t*p[1][0] +
-        #        3*(1-t) * t**2 * p[2][0] + t**3 * p[3][0],
-        #        # v
-        #        (1-t)**3 * p[0][1] + 3*(1-t)**2 * t*p[1][1] +
-        #        3*(1-t) * t**2 * p[2][1] + t**3 * p[3][1]))
 
         # Get the coefficients using coeffs(collect(B),t) in Matlab
         t2 = t*t

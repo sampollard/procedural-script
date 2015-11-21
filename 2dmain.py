@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 CSCI 580 Project
-Author: Sam Pollard (pollars at students dot wwu dotedu)
-Last Modified: November 20, 2015
+Author: Sam Pollard (pollars at students dot wwu dot edu)
+Last Modified: November 21, 2015
 Code taken from Geof Matthews (github.com/geofmatthews/csci480)
 """
 
@@ -23,7 +23,7 @@ else:
 data_dir = os.path.join(main_dir, 'data')
 
 def handleInput(screen):
-    #Handle Input Events
+    #Handle Keyboard Events
     for event in pygame.event.get():
         if event.type == QUIT:
             return True
@@ -92,17 +92,13 @@ def drawImage(title, colorAt, noiseGen):
                         time.clock() - start))
 
 def main():
-    """ this function is called when the program starts.
-        it initializes everything it needs, then runs in
-        a loop until the function returns.
-    """
     pygame.init()
+    print("Press s to save, esc to exit")
     noiseGen = noise.ValueNoise(noiseType="turbulence")
-    stroke = bezier.Handwriting(thickness=lambda t: 0.1*(1-t), scale=4)
-    print(stroke)  # Print some information about the texture (TEST)
+    stroke = bezier.Handwriting(scale=4)#, thickness=lambda t: 0.1*(1-t))
+    # print(stroke)  # Print some information about the texture (TEST)
     drawImage("Handwriting!", stroke.evaluate, noiseGen)
 
-#this calls the 'main' function when this script is executed
 if __name__ == '__main__':
     try:
         main()
