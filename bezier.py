@@ -32,7 +32,8 @@ class Handwriting(Texture):
         self.tex1 = texture1     # Inside bezier curve
         self.tex2 = texture2     # Outside bezier curve
         self.scale = scale
-        # strokes is the number of unique strokes
+        # strokes is the number of unique strokes. May increase when
+        # connect_p > 0.
         self.strokes = strokes
         self.octaves = 9         # Accurate to dimension / 2^(octaves+1) pixels
         self.eps = lambda t: thickness(t) / self.scale
@@ -53,30 +54,51 @@ class Handwriting(Texture):
         max_s = 3
 
         # Create each character. self.characters indexing goes
-        # [character][stroke][control point][uv coordinate]
+        # [character][bezier curve][control point][uv coordinate]
+        # We keep track of which characters have been modified so
+        # strokes don't get changed twice
         self.characters = []
+        used_strokes = {}
         for i in range(unique_chars):
             char = []
             for stroke in range(random.randint(min_s, max_s)):
                 char.append(self.hash_table[(max_s*i) + stroke] % strokes)
+                used_strokes[char[-1]] = True
             self.characters.append(char)
         
         # Connect the strokes at the character edges
+        cp = self.control_points
         for i in range(unique_chars):
             if random.random() < connect_p:
-                prev_uv = self.control_points[self.characters[i][-1]][3]
-                self.control_points[self.characters[i][-1]][3][0] = 1.0
-                self.control_points[self.characters[(i+1) % int(unique_chars)
-                        ][0]][0] = (0.0, prev_uv[1])
+                first_stroke = self.characters[i][-1]
+                second_stroke = self.characters[(i+1) % int(unique_chars)][0]
+                print(first_stroke, second_stroke)
+                # Connect the first control point of the first stroke with
+                # the first control point of the second stroke.
+                if used_strokes[first_stroke]:
+                    cp.append(cp[first_stroke])
+                    self.characters[i][-1] = len(cp) - 1
+                    self.strokes += 1
+                    used_strokes[len(cp) - 1] = True
+                    cp[-1][0] = [1.0, cp[second_stroke][0][1]]
+                if used_strokes[second_stroke]:
+                    cp.append(cp[second_stroke])
+                    self.characters[(i+1) % int(unique_chars)][0] = len(cp)-1
+                    self.strokes += 1
+                    used_strokes[len(cp) - 1] = True
+                    cp[-1][0] = [0.0, cp[second_stroke][0][1]]
+                    
+                print(self.control_points[-2])
+                print(self.control_points[-1])
                 
-                if i == 0:
-                    print(self.control_points[self.characters[i][-1]])
                 
-                #self.characters[i][-1] = self.characters
-                #self.control_points[self.characters[i-1][0]][0][0] = 1.0
-                #self.control_points[self.characters[i][0]][0][0] = 0.0
-                #self.control_points[self.characters[i][0]][0][1] = (
-                        #self.control_points[self.characters[i-1][0]][0][1])
+                
+                #self.control_points[self.characters[i][-1]][3][0] = 1.0
+                #self.control_points[self.characters[(i+1) % int(unique_chars)
+                        #][0]][0] = (0.0, prev_uv[1])
+                
+                #if i == 0:
+                    #print(self.control_points[self.characters[i][-1]])
 
 
     def __repr__(self):
