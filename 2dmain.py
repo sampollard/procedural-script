@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 """
 CSCI 580 Project
 Author: Sam Pollard (pollars at students dot wwu dot edu)
-Last Modified: November 21, 2015
+Last Modified: November 23, 2015
 Code taken from Geof Matthews (github.com/geofmatthews/csci480)
 """
 
@@ -96,7 +95,7 @@ def main():
     print("Press s to save, esc to exit")
     noiseGen = noise.ValueNoise(noiseType="turbulence")
     stroke = bezier.Handwriting(scale=4)#, thickness=lambda t: 0.1*(1-t))
-    # print(stroke)  # Print some information about the texture (TEST)
+    print(stroke)  # Print some information about the texture (TEST)
     drawImage("Handwriting!", stroke.evaluate, noiseGen)
 
 if __name__ == '__main__':

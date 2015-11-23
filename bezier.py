@@ -23,31 +23,39 @@ class Handwriting(Texture):
                        scale=1,
                        strokes=30,
                        unique_chars=16,
-                       connect_p=1.0):
-                       # XXX: Curviness \in [0,infty)
+                       connect_p=0.8):
+                       # Idea: Curviness \in [0,infty)
                        # where a value of 1 is default random numbers
                        # between [0,1) from random(), 0 is collinear,
                        # and numbers larger than 1 scale random to be
                        # in the range [0,curviness).
+                       # Idea: Direction: Specifies which direction the
+                       # text gets displayed. Default "lr", but also
+                       # right to left, top-down left-right, top-down
+                       # right-left, spiral out, spiral in, etc.
         self.tex1 = texture1     # Inside bezier curve
         self.tex2 = texture2     # Outside bezier curve
         self.scale = scale
-        # strokes is the number of unique strokes. May increase when
-        # connect_p > 0.
-        self.strokes = strokes
+        # strokes = len(control_points) is the number of unique strokes.
+        # May increase when connect_p > 0.
         self.octaves = 9         # Accurate to dimension / 2^(octaves+1) pixels
         self.eps = lambda t: thickness(t) / self.scale
 
         # Create a random hash table to which and how many bezier curves
         # are used for each character.
+        # XXX: May get index out of range if strokes > hash_sz
         random.seed(0)
         hash_sz = 257  # Choose a prime number for the hash size
         self.hash_table = list(range(hash_sz))
         random.shuffle(self.hash_table)
 
         # Create the control points. 4 control points = 1 bezier curve
+        def cp_random():
+            """Create a random pair [u,v] used as a control point"""
+            return [0.2 + 0.6 * random.random(), 0.2 + 0.6 * random.random()]
+        
         self.control_points = [
-                [[random.random(), random.random()] for cp in range(4)]
+                [cp_random() for cp in range(4)]
                 for stroke in range(strokes)]
         # Create the characters which contain between [min_s, max_s] strokes
         min_s = 1
@@ -55,7 +63,7 @@ class Handwriting(Texture):
 
         # Create each character. self.characters indexing goes
         # [character][bezier curve][control point][uv coordinate]
-        # We keep track of which characters have been modified so
+        # We keep track of how many times each stroke is used so
         # strokes don't get changed twice
         self.characters = []
         used_strokes = {}
@@ -63,43 +71,39 @@ class Handwriting(Texture):
             char = []
             for stroke in range(random.randint(min_s, max_s)):
                 char.append(self.hash_table[(max_s*i) + stroke] % strokes)
-                used_strokes[char[-1]] = True
+                try:
+                    used_strokes[char[-1]] += 1
+                except KeyError:
+                    used_strokes[char[-1]] = 1
             self.characters.append(char)
         
-        # Connect the strokes at the character edges
+        # Connect characters at the character edges
         cp = self.control_points
-        for i in range(unique_chars):
-            if random.random() < connect_p:
+        for i in range(unique_chars - 1):
+            if random.random() < connect_p and i % scale != scale - 1:
                 first_stroke = self.characters[i][-1]
-                second_stroke = self.characters[(i+1) % int(unique_chars)][0]
+                second_stroke = self.characters[i + 1][0]
                 print(first_stroke, second_stroke)
-                # Connect the first control point of the first stroke with
-                # the first control point of the second stroke.
-                if used_strokes[first_stroke]:
+                # If the stroke is used in more than one place then make
+                # a copy and modify it
+                if used_strokes[first_stroke] > 1:
                     cp.append(cp[first_stroke])
-                    self.characters[i][-1] = len(cp) - 1
-                    self.strokes += 1
-                    used_strokes[len(cp) - 1] = True
-                    cp[-1][0] = [1.0, cp[second_stroke][0][1]]
-                if used_strokes[second_stroke]:
+                    used_strokes[first_stroke] = 1
+                    first_stroke = len(cp) - 1
+                    used_strokes[first_stroke] = 1
+                if used_strokes[second_stroke] > 1:
                     cp.append(cp[second_stroke])
-                    self.characters[(i+1) % int(unique_chars)][0] = len(cp)-1
-                    self.strokes += 1
-                    used_strokes[len(cp) - 1] = True
-                    cp[-1][0] = [0.0, cp[second_stroke][0][1]]
-                    
-                print(self.control_points[-2])
-                print(self.control_points[-1])
-                
-                
-                
-                #self.control_points[self.characters[i][-1]][3][0] = 1.0
-                #self.control_points[self.characters[(i+1) % int(unique_chars)
-                        #][0]][0] = (0.0, prev_uv[1])
-                
-                #if i == 0:
-                    #print(self.control_points[self.characters[i][-1]])
+                    used_strokes[second_stroke] = 1
+                    second_stroke = len(cp) - 1
+                    used_strokes[second_stroke] = 1
 
+                cp[first_stroke][3]  = [1.0, cp[second_stroke][0][1]]
+                cp[second_stroke][0] = [0.0, cp[second_stroke][0][1]]
+                self.characters[i][-1] = first_stroke
+                self.characters[i + 1][0] = second_stroke
+                    
+                print(self.control_points[first_stroke])
+                print(self.control_points[second_stroke])
 
     def __repr__(self):
         cp_str = "[\n"
@@ -176,11 +180,16 @@ class Handwriting(Texture):
             for r in roots:
                 if r.imag == 0.0:
                     t = r.real
-                    if np.linalg.norm(uv - self.B(t, i)) < self.eps(t) and (
-                            t < 1 + self.eps(t) or t > -self.eps(t)):
+                    if (0.0 <= t <= 1.0 and
+                           np.linalg.norm(uv - self.B(t,i)) < self.eps(t)
+                        ) or (
+                        t > 1.0 and
+                            np.linalg.norm(uv-self.B(1.0,i)) < self.eps(1.0)
+                        ) or (
+                        t < 0.0 and
+                            np.linalg.norm(uv-self.B(0.0,i)) < self.eps(0.0)):
                         return True
             return False
- 
 
         def in_curve_bs(uv, i):
             """ Determines if the point (u,v) is inside curve i with
@@ -195,8 +204,7 @@ class Handwriting(Texture):
                 else:
                     t = t - sf
                 sf /= 2
-            if np.linalg.norm(uv - self.B(t, i)) < self.eps(t) and (
-                    t < 1 + self.eps(t) or t > -self.eps(t)):
+            if np.linalg.norm(uv - self.B(t,i)) < self.eps(t):
                 return True
             else:
                 return False
@@ -206,9 +214,6 @@ class Handwriting(Texture):
         pctu = (scaled_u) % 1
         pctv = (scaled_v) % 1
         # Move left to right in row-major order through the bezier curves
-        # XXX: Alternatively, _i_ could index into the hash table to get
-        #      an index into the character array
-        i = (self.scale*int(scaled_u) + int(scaled_v)) % len(self.characters)
+        i = (self.scale*int(scaled_v) + int(scaled_u)) % len(self.characters)
         uv = np.array((pctu,pctv))
-        # Search through each bezier curve used in this box
         return any([in_curve_exact(uv, val) for val in self.characters[i]])
