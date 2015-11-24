@@ -18,18 +18,40 @@ class Texture():
 
 
 class Handwriting(Texture):
-    def __init__(self, texture1=Texture(lambda u,v: (0,0,0)),
-                       texture2=Texture(lambda u,v: (1,1,1)),
-                       brush=lambda t: 0.1,
-                       scale=1,
-                       strokes=30,
-                       unique_chars=16,
-                       connect_p=1.0):
-                       # Idea: Curviness \in [0,infty)
-                       # where a value of 1 is default random numbers
-                       # between [0,1) from random(), 0 is collinear,
-                       # and numbers larger than 1 scale random to be
-                       # in the range [0,curviness).
+    """ Explicit representation of a handwriting texture.
+        Returns texture1 if the point (u,v) is inside the handwriting
+        and texture2 otherwise. Here, a stroke denotes a bezier curve
+        and character denotes a collection of one or more strokes
+        overlaid in the same domain.
+
+        Input parameters:
+        brush          Function to determine the width of the stroke.
+                         May depend on the parameter of the spline.
+        scale          How many characters fit on one line.
+        strokes        The number of unique strokes.
+        unique_chars   The number of different characters. May increase
+                         if connect_p is nonzero.
+        connect_p      The probability that one character will connect
+                         with the next.
+        concavity_pdf  The probability density function to determine
+                         each stroke's inflection: negative numbers
+                         represent downward-concaving strokes, positive
+                         represent upward-concaving strokes, and 0 is a
+                         straight line.
+        min_s          The minimum number of strokes per character.
+        max_s          The maximum number of strokes per character.
+    """
+    def __init__(self,
+                 texture1=Texture(lambda u,v: (0,0,0)),
+                 texture2=Texture(lambda u,v: (1,1,1)),
+                 brush=lambda t: 0.1,
+                 scale=1,
+                 strokes=30,
+                 unique_chars=25,
+                 connect_p=0.8,
+                 concavity_pdf=lambda: 0, # np.random.normal,
+                 min_s=2,
+                 max_s=3):
                        # Idea: Direction: Specifies which direction the
                        # text gets displayed. Default "lr", but also
                        # right to left, top-down left-right, top-down
@@ -54,12 +76,16 @@ class Handwriting(Texture):
             """Create a random pair [u,v] used as a control point"""
             return [0.25 + 0.5*random.random(), 0.25 + 0.5*random.random()]
         
-        self.control_points = [
-                [cp_random() for cp in range(4)]
-                for stroke in range(strokes)]
-        # Create the characters which contain between [min_s, max_s] strokes
-        min_s = 2
-        max_s = 3
+        self.control_points = []
+        for s in range(strokes):
+            (p0, p3) = (np.array(cp_random()), np.array(cp_random()))
+            # p1r = concavity_pdf()
+            # p2r = concavity_pdf()
+            # p1 = np.array(cp_random())*p1r + (1 - p1r()) * (p3 - p0/3)
+            p1 = p3 - (1/3) * (p0 - p3)
+            p2 = p3 - (2/3) * (p0 - p3)
+            s = [list(p) for p in [p0,p1,p2,p3]]
+            self.control_points.append(s)
 
         # Create each character. self.characters indexing goes
         # [character][bezier curve][control point][uv coordinate]
@@ -71,7 +97,7 @@ class Handwriting(Texture):
         for i in range(unique_chars):
             char = []
             for stroke in range(random.randint(min_s, max_s)):
-                char.append(self.hash_table[stroke_counter%hash_sz] % strokes)
+                char.append(self.hash_table[stroke_counter % hash_sz] % strokes)
                 stroke_counter += 1
                 try:
                     used_strokes[char[-1]] += 1
@@ -81,10 +107,6 @@ class Handwriting(Texture):
         
         # Connect the characters at the box edges (u = 1.0 or 0.0)
         # unless the character is at the end of a row
-        # XXX: Characters at the end of the row are getting connected
-        #      while characters in the middle are not sometimes. Suspect
-        #      it is with copying and creating a new stroke, not updating
-        #      or overupdating the old one.
         cp = self.control_points
         for i in range(unique_chars - 1):
             if random.random() < connect_p and i % scale < scale - 1:
@@ -98,6 +120,7 @@ class Handwriting(Texture):
                     first_stroke = len(cp) - 1
                     used_strokes[first_stroke] = 1
                 if used_strokes[second_stroke] > 1:
+                    print(second_stroke)
                     cp.append(copy.deepcopy(cp[second_stroke]))
                     used_strokes[second_stroke] -= 1
                     second_stroke = len(cp) - 1
