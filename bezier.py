@@ -3,6 +3,7 @@
     and returns the color at one or the other for each point (u,v)
 """
 
+import copy
 import inspect
 import numpy as np
 import random
@@ -19,11 +20,11 @@ class Texture():
 class Handwriting(Texture):
     def __init__(self, texture1=Texture(lambda u,v: (0,0,0)),
                        texture2=Texture(lambda u,v: (1,1,1)),
-                       thickness=lambda t: 0.1,
+                       brush=lambda t: 0.1,
                        scale=1,
                        strokes=30,
                        unique_chars=16,
-                       connect_p=0.8):
+                       connect_p=1.0):
                        # Idea: Curviness \in [0,infty)
                        # where a value of 1 is default random numbers
                        # between [0,1) from random(), 0 is collinear,
@@ -39,11 +40,10 @@ class Handwriting(Texture):
         # strokes = len(control_points) is the number of unique strokes.
         # May increase when connect_p > 0.
         self.octaves = 9         # Accurate to dimension / 2^(octaves+1) pixels
-        self.eps = lambda t: thickness(t) / self.scale
+        self.eps = lambda t: brush(t) / self.scale
 
-        # Create a random hash table to which and how many bezier curves
-        # are used for each character.
-        # XXX: May get index out of range if strokes > hash_sz
+        # Create a random hash table to determine which and how many
+        # bezier curves are used for each character.
         random.seed(0)
         hash_sz = 257  # Choose a prime number for the hash size
         self.hash_table = list(range(hash_sz))
@@ -52,13 +52,13 @@ class Handwriting(Texture):
         # Create the control points. 4 control points = 1 bezier curve
         def cp_random():
             """Create a random pair [u,v] used as a control point"""
-            return [0.2 + 0.6 * random.random(), 0.2 + 0.6 * random.random()]
+            return [0.25 + 0.5*random.random(), 0.25 + 0.5*random.random()]
         
         self.control_points = [
                 [cp_random() for cp in range(4)]
                 for stroke in range(strokes)]
         # Create the characters which contain between [min_s, max_s] strokes
-        min_s = 1
+        min_s = 2
         max_s = 3
 
         # Create each character. self.characters indexing goes
@@ -67,33 +67,39 @@ class Handwriting(Texture):
         # strokes don't get changed twice
         self.characters = []
         used_strokes = {}
+        stroke_counter = 0
         for i in range(unique_chars):
             char = []
             for stroke in range(random.randint(min_s, max_s)):
-                char.append(self.hash_table[(max_s*i) + stroke] % strokes)
+                char.append(self.hash_table[stroke_counter%hash_sz] % strokes)
+                stroke_counter += 1
                 try:
                     used_strokes[char[-1]] += 1
                 except KeyError:
                     used_strokes[char[-1]] = 1
             self.characters.append(char)
         
-        # Connect characters at the character edges
+        # Connect the characters at the box edges (u = 1.0 or 0.0)
+        # unless the character is at the end of a row
+        # XXX: Characters at the end of the row are getting connected
+        #      while characters in the middle are not sometimes. Suspect
+        #      it is with copying and creating a new stroke, not updating
+        #      or overupdating the old one.
         cp = self.control_points
         for i in range(unique_chars - 1):
-            if random.random() < connect_p and i % scale != scale - 1:
+            if random.random() < connect_p and i % scale < scale - 1:
                 first_stroke = self.characters[i][-1]
                 second_stroke = self.characters[i + 1][0]
-                print(first_stroke, second_stroke)
                 # If the stroke is used in more than one place then make
                 # a copy and modify it
                 if used_strokes[first_stroke] > 1:
-                    cp.append(cp[first_stroke])
-                    used_strokes[first_stroke] = 1
+                    cp.append(copy.deepcopy(cp[first_stroke]))
+                    used_strokes[first_stroke] -= 1
                     first_stroke = len(cp) - 1
                     used_strokes[first_stroke] = 1
                 if used_strokes[second_stroke] > 1:
-                    cp.append(cp[second_stroke])
-                    used_strokes[second_stroke] = 1
+                    cp.append(copy.deepcopy(cp[second_stroke]))
+                    used_strokes[second_stroke] -= 1
                     second_stroke = len(cp) - 1
                     used_strokes[second_stroke] = 1
 
@@ -101,13 +107,12 @@ class Handwriting(Texture):
                 cp[second_stroke][0] = [0.0, cp[second_stroke][0][1]]
                 self.characters[i][-1] = first_stroke
                 self.characters[i + 1][0] = second_stroke
-                    
-                print(self.control_points[first_stroke])
-                print(self.control_points[second_stroke])
+
 
     def __repr__(self):
         cp_str = "[\n"
-        for cp in self.control_points:
+        for ind, cp in enumerate(self.control_points):
+            cp_str += "{:3d}:".format(ind)
             for p in cp:
                 cp_str += " ({:.4f}, {:.4f})".format(p[0], p[1])
             cp_str += "\n"
