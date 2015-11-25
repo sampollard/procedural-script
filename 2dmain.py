@@ -1,7 +1,7 @@
 """
-CSCI 580 Project
+CSCI 580 Project - Fall 2015 - Western Washington University
 Author: Sam Pollard (pollars at students dot wwu dot edu)
-Last Modified: November 23, 2015
+Last Modified: November 24, 2015
 Code taken from Geof Matthews (github.com/geofmatthews/csci480)
 """
 
@@ -122,7 +122,7 @@ def main():
     print("Press s to save, esc to exit")
     pygame.display.set_caption("Handwriting!")
     stroke = bezier.Handwriting(
-            scale=4, connect_p=0, brush=lambda t: 0.1*(1-t), max_s=10)
+            scale=4, connect_p=0, brush=lambda t: 0.1*(1-t), min_s=2, max_s=4, h_space=0)
     print(stroke)  # Print some information about the texture (TEST)
     draw_image_explicit(stroke.evaluate)
 

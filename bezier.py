@@ -1,6 +1,6 @@
 """ Procedurally generated handwriting using bezier curves.
-    The primary method is evaluate which takes as input two textures
-    and returns the color at one or the other for each point (u,v)
+    The primary method is evaluate which determines for each point
+    (u,v) which texture should display.
 """
 
 import copy
@@ -13,9 +13,46 @@ class Texture():
         self.evaluate = eval_func
     
     def evaluate(self, u, v):
-        """Determine the color given u,v coordinates"""
+        """Determine the texture given u,v coordinates"""
         pass
 
+class Character():
+    """A character's strokes index into a control_point array."""
+    def __init__(self, control_points, strokes=None):
+        self.strokes = list(strokes) if strokes else []
+        self.control_points = control_points
+
+    def __getitem__(self, index):
+        return self.strokes[index]
+
+    def __setitem__(self, index, item):
+        self.strokes[index] = item
+
+    def __iter__(self):
+        """Will not iterate over extra marks."""
+        return iter(self.strokes)
+
+    def __repr__(self):
+        return repr(self.strokes)
+
+    def append(self, s):
+        self.strokes.append(s)
+
+    def link_next(self, next_cp):
+        """Link from this character's final stroke to next_cp."""
+        return [list(control_points[self.strokes[-1]][3]),
+                [[random.random(), random.random()]],
+                [[random.random(), random.random()]],
+                list(next_cp)]
+
+    def link_prev(self, prev_cp):
+        """Link from this character's first stroke to prev_cp."""
+
+    def perturb(self, amount):
+        """Perturb the character by joggling the control points"""
+        if not 0.0 < amount < 1.0:
+            raise ValueError("amount must be in [0,1]")
+        pass
 
 class Handwriting(Texture):
     """ Explicit representation of a handwriting texture.
@@ -33,36 +70,44 @@ class Handwriting(Texture):
                          if connect_p is nonzero.
         connect_p      The probability that one character will connect
                          with the next.
-        concavity_pdf  The probability density function to determine
-                         each stroke's inflection: negative numbers
-                         represent downward-concaving strokes, positive
-                         represent upward-concaving strokes, and 0 is a
-                         straight line.
         min_s          The minimum number of strokes per character.
         max_s          The maximum number of strokes per character.
     """
+
     def __init__(self,
                  texture1=Texture(lambda u,v: (0,0,0)),
                  texture2=Texture(lambda u,v: (1,1,1)),
                  brush=lambda t: 0.1,
                  scale=1,
-                 strokes=30,
+                 unique_strokes=30,
                  unique_chars=25,
                  connect_p=0.8,
-                 concavity_pdf=lambda: 0, # np.random.normal,
                  min_s=2,
-                 max_s=3):
-                       # Idea: Direction: Specifies which direction the
-                       # text gets displayed. Default "lr", but also
-                       # right to left, top-down left-right, top-down
-                       # right-left, spiral out, spiral in, etc.
+                 max_s=3,
+                 v_space=0.25,
+                 h_space=0.25):
+                 # Idea: Direction: Specifies which direction the
+                 # text gets displayed. Default "lr", but also
+                 # right to left, top-down left-right, top-down
+                 # right-left, spiral out, spiral in, etc.
+                 # Idea: Closeness (or kerning). 0 gives regular old boxes,
+                 # 1 gives completely overlapped. Default: 0.1
+        # Validate parameters
+        if not 0.0 <= connect_p <= 1.0:
+            raise ValueError("connect_p must be a probability")
+        if not 0.0 <= v_space <= 1.0:
+            raise ValueError("v_space must be in [0,1]")
+        if not 0.0 <= h_space <= 1.0:
+            raise ValueError("h_space must be in [0,1]")
+
         self.tex1 = texture1     # Inside bezier curve
         self.tex2 = texture2     # Outside bezier curve
         self.scale = scale
-        # strokes = len(control_points) is the number of unique strokes.
-        # May increase when connect_p > 0.
+        # unique_strokes = len(control_points) may increase when connect_p > 0.
         self.octaves = 9         # Accurate to dimension / 2^(octaves+1) pixels
         self.eps = lambda t: brush(t) / self.scale
+        self.h_space = h_space
+        self.v_space = v_space
 
         # Create a random hash table to determine which and how many
         # bezier curves are used for each character.
@@ -72,18 +117,23 @@ class Handwriting(Texture):
         random.shuffle(self.hash_table)
 
         # Create the control points. 4 control points = 1 bezier curve
+        h_border = 0.2
+        v_border = 0.2
         def cp_random():
             """Create a random pair [u,v] used as a control point"""
-            return [0.25 + 0.5*random.random(), 0.25 + 0.5*random.random()]
+            return [h_border + (1 - 2*h_border) * random.random(),
+                    v_border + (1 - 2*v_border) * random.random()]
         
         self.control_points = []
-        for s in range(strokes):
+        for s in range(unique_strokes):
             (p0, p3) = (np.array(cp_random()), np.array(cp_random()))
+            p1 = cp_random()
+            p2 = cp_random()
             # p1r = concavity_pdf()
             # p2r = concavity_pdf()
             # p1 = np.array(cp_random())*p1r + (1 - p1r()) * (p3 - p0/3)
-            p1 = p3 - (1/3) * (p0 - p3)
-            p2 = p3 - (2/3) * (p0 - p3)
+            # p1 = p3 - (1/3) * (p0 - p3)
+            # p2 = p3 - (2/3) * (p0 - p3)
             s = [list(p) for p in [p0,p1,p2,p3]]
             self.control_points.append(s)
 
@@ -95,9 +145,10 @@ class Handwriting(Texture):
         used_strokes = {}
         stroke_counter = 0
         for i in range(unique_chars):
-            char = []
+            char = Character(self.control_points)
             for stroke in range(random.randint(min_s, max_s)):
-                char.append(self.hash_table[stroke_counter % hash_sz] % strokes)
+                char.append(self.hash_table[stroke_counter % hash_sz]
+                            % unique_strokes)
                 stroke_counter += 1
                 try:
                     used_strokes[char[-1]] += 1
@@ -241,7 +292,28 @@ class Handwriting(Texture):
         scaled_v = self.scale * v
         pctu = (scaled_u) % 1
         pctv = (scaled_v) % 1
-        # Move left to right in row-major order through the bezier curves
-        i = (self.scale*int(scaled_v) + int(scaled_u)) % len(self.characters)
-        uv = np.array((pctu,pctv))
-        return any([in_curve_exact(uv, val) for val in self.characters[i]])
+        # i = (self.scale*int(scaled_v) + int(scaled_u)) % len(self.characters)
+        # Randomly select a character to draw
+        c1 = self.hash_table[
+                (self.hash_table[int(scaled_u) % len(self.hash_table)] +
+                int(scaled_v)) % len(self.hash_table)] % len(self.characters)
+        uv1 = np.array((pctu,pctv))
+
+        scaled_u -= 2*self.h_space
+        scaled_v -= 2*self.v_space
+        if scaled_u < 0 or scaled_v < 0:
+            c2 = None
+        else:
+            c2 = self.hash_table[
+                    (self.hash_table[int(scaled_u) % len(self.hash_table)] +
+                    int(scaled_v)) % len(self.hash_table)] % len(self.characters)
+        uv2 = np.array((scaled_u % 1, scaled_v % 1))
+
+        return (any([in_curve_exact(uv1, val) for val in self.characters[c1]])
+                or
+                False if c2 is None else
+                any([in_curve_exact(uv2, val) for val in self.characters[c2]]))
+
+if __name__ == '__main__':
+    h = Handwriting()
+    print(h)
