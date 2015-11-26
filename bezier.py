@@ -95,10 +95,12 @@ class Handwriting(Texture):
         # Validate parameters
         if not 0.0 <= connect_p <= 1.0:
             raise ValueError("connect_p must be a probability")
-        if not 0.0 <= v_space <= 1.0:
-            raise ValueError("v_space must be in [0,1]")
-        if not 0.0 <= h_space <= 1.0:
-            raise ValueError("h_space must be in [0,1]")
+        # Greater than 0.5 means more than 2 characters may contained
+        # in a given box, complicating things.
+        if not 0.0 <= v_space <= 0.5:
+            raise ValueError("v_space must be in [0,0.5]")
+        if not 0.0 <= h_space <= 0.5:
+            raise ValueError("h_space must be in [0,0.5]")
 
         self.tex1 = texture1     # Inside bezier curve
         self.tex2 = texture2     # Outside bezier curve
@@ -117,8 +119,8 @@ class Handwriting(Texture):
         random.shuffle(self.hash_table)
 
         # Create the control points. 4 control points = 1 bezier curve
-        h_border = 0.2
-        v_border = 0.2
+        h_border = 0.01
+        v_border = 0.01
         def cp_random():
             """Create a random pair [u,v] used as a control point"""
             return [h_border + (1 - 2*h_border) * random.random(),
@@ -288,31 +290,44 @@ class Handwriting(Texture):
             else:
                 return False
 
-        scaled_u = self.scale * u
-        scaled_v = self.scale * v
-        pctu = (scaled_u) % 1
-        pctv = (scaled_v) % 1
-        # i = (self.scale*int(scaled_v) + int(scaled_u)) % len(self.characters)
-        # Randomly select a character to draw
+        oneminus_h = 1.0 - self.h_space
+        oneminus_v = 1.0 - self.v_space
+        scaled_u = int(self.scale * u / oneminus_h) + oneminus_h * (
+                   (self.scale * u  / oneminus_h) % 1)
+        scaled_v = int(self.scale * v / oneminus_v) + oneminus_v * (
+                   (self.scale * v / oneminus_v) % 1)
+        uv1 = np.array((scaled_u % 1, scaled_v % 1))
+        ### Randomly select a character to draw
         c1 = self.hash_table[
                 (self.hash_table[int(scaled_u) % len(self.hash_table)] +
                 int(scaled_v)) % len(self.hash_table)] % len(self.characters)
-        uv1 = np.array((pctu,pctv))
 
-        scaled_u -= 2*self.h_space
-        scaled_v -= 2*self.v_space
-        if scaled_u < 0 or scaled_v < 0:
-            c2 = None
-        else:
-            c2 = self.hash_table[
-                    (self.hash_table[int(scaled_u) % len(self.hash_table)] +
-                    int(scaled_v)) % len(self.hash_table)] % len(self.characters)
+        ### Finish drawing the previous character if necessary
+        # WARNING: int is used in place of floor here which causes issues
+        #          for u or v < h. This is avoided by avoiding checking c2
+        #          when u or v < h.
+        scaled_u = (int((self.scale * u - self.h_space) / oneminus_h)
+                    + oneminus_h *
+                    (((self.scale * u - self.h_space)  / oneminus_h) % 1)
+                    + self.h_space)
+        scaled_u = (int((self.scale * v - self.v_space) / oneminus_v) +
+                    oneminus_v *
+                    (((self.scale * v - self.v_space)  / oneminus_v) % 1)
+                    + self.v_space)
         uv2 = np.array((scaled_u % 1, scaled_v % 1))
+        c2 = self.hash_table[
+                (self.hash_table[int(scaled_u) % len(self.hash_table)] +
+                int(scaled_v)) % len(self.hash_table)] % len(self.characters)
 
-        return (any([in_curve_exact(uv1, val) for val in self.characters[c1]])
-                or
-                False if c2 is None else
-                any([in_curve_exact(uv2, val) for val in self.characters[c2]]))
+        in_c1 = any([in_curve_exact(uv1, val) for val in self.characters[c1]])
+        # To improve efficiency and avoid checking the characters twice
+        if uv2[0] < self.h_space or uv2[1] < self.v_space:
+            in_c2 = any([in_curve_exact(uv2, val) for val in self.characters[c2]])
+            print "c1u, c2u", uv1[0], uv2[0]
+        else:
+            in_c2 = False
+            print "Not checking", uv1, uv2
+        return (in_c1 or in_c2)
 
 if __name__ == '__main__':
     h = Handwriting()

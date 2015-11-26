@@ -47,20 +47,22 @@
 	\coordinate (p1) at (-1,2);
 	\coordinate (p2) at (1,2);
 	\coordinate (p3) at (1,1);
-	\coordinate (u) at (-.4,1);
-	\coordinate (uv) at (-1,1.2);
+	\coordinate (qhat) at (-0.29,1);
+	\coordinate (uv) at (-1,1.1);
+	\coordinate (tangent) at (-0.24,1.5);
     % Draw a border around the curve
-    \draw[double distance=8mm,line width=1pt,line join=round,line cap=round,blue] (p0) .. controls (p1) and (p2) .. (p3);
+    \draw[double distance=14mm,line width=1pt,line join=round,line cap=round,blue] (p0) .. controls (p1) and (p2) .. (p3);
 	% Draw the bezier curve
 	\draw[line width=1pt] (p0) .. controls (p1) and (p2) .. (p3);
 	% Mark and label the control points
-    \filldraw[red] (p0) circle[radius=1.5pt] node[black, anchor=west, xshift=2mm, yshift=-5mm] {$p_0$};
+    \filldraw[red] (p0) circle[radius=1.5pt] node[black, anchor=west, yshift=-2.5mm] {$p_0$};
     \filldraw[red] (p1) circle[radius=1.5pt] node[black, anchor=west, yshift=-2.5mm] {$p_1$};
     \filldraw[red] (p2) circle[radius=1.5pt] node[black, anchor=west, yshift=-2.5mm] {$p_2$};
-    \filldraw[red] (p3) circle[radius=1.5pt] node[black, anchor=west, xshift=2mm, yshift=-5mm] {$p_3$};
-    % Draw the point that we will check
-    \filldraw[green] (u) circle[radius=1.5pt];
-    \draw [-latex, black] (uv) node[anchor=east, xshift=1mm] {$q$} -- (u);
+    \filldraw[red] (p3) circle[radius=1.5pt] node[black, anchor=west, yshift=-2.5mm] {$p_3$};
+    % Label the point and its projection
+    \filldraw[green] (qhat) circle[radius=1.5pt] node[black, anchor=west, yshift=-0.5mm] {$\hat{q}$};
+    \tkzMarkRightAngle[size=0.15](uv,qhat,tangent);
+    \filldraw[black] (uv) circle[radius=1.5pt] node[anchor=east] {$q$} -- (qhat);
 \end{tikzpicture}
 \end{center}
 
@@ -81,4 +83,7 @@ Next, we determine if a given point $q = (u,v)$ lies inside of the blue region. 
   &= B_u(t)\frac{\diff B_u}{\diff t}(t) + B_v(t)\frac{\diff B_v}{\diff t}(t)
 \end{align*}
 which amounts to finding the real roots of a fifth-order polynomial. For the exact formula of this polynomial see the attached Python code.
+
+\section{Connecting Characters}
+Many forms of handwriting and calligraphy join the individual characters. For example, each letter of the Arabic alphabet has a different form depending on if there are other letters preceding or succeeding it. Since each character is defined in its own $[0,1]$ box, we overlay each character vertically and horizontally to allow characters to more easily connect and to spill over. Typographically, this is adjusting the spacing and the kerning. 
 \end{document}
