@@ -5,6 +5,7 @@
 
 import copy
 import inspect
+import math
 import numpy as np
 import random
 
@@ -27,11 +28,7 @@ class Character():
 
     def __setitem__(self, index, item):
         self.strokes[index] = item
-
-    def __iter__(self):
-        """Will not iterate over extra marks."""
-        return iter(self.strokes)
-
+    
     def __repr__(self):
         return repr(self.strokes)
 
@@ -40,13 +37,34 @@ class Character():
 
     def link_next(self, next_cp):
         """Link from this character's final stroke to next_cp."""
-        return [list(control_points[self.strokes[-1]][3]),
-                [[random.random(), random.random()]],
-                [[random.random(), random.random()]],
-                list(next_cp)]
+        uv = list(self.control_points[self.strokes[-1]][3])
+        if next_cp:
+            return  [uv,
+                    [(uv[0] - next_cp[0]) / 3, (uv[1] - next_cp[1]) / 3],
+                    [2*(uv[0] - next_cp[0]) / 3, 2*(uv[1] - next_cp[1]) / 3],
+                    list(next_cp)]
+        else:
+            return []
 
     def link_prev(self, prev_cp):
         """Link from this character's first stroke to prev_cp."""
+        uv = list(self.control_points[self.strokes[-1]][0])
+        if prev_cp:
+            return  [uv,
+                    [(uv[0] - prev_cp[0]) / 3, (uv[1] - prev_cp[1]) / 3],
+                    [2*(uv[0] - prev_cp[0]) / 3, 2*(uv[1] - prev_cp[1]) / 3],
+                    list(prev_cp)]
+        else:
+            return []
+    
+    def stroke_list(self, prev_cp=None, next_cp=None):
+        """Returns all the control points for each stroke."""
+        slist = [self.control_points[i] for i in self.strokes]
+        if prev_cp:
+            slist.append(self.link_prev(prev_cp))
+        if next_cp:
+            slist.append(self.link_next(next_cp))
+        return slist
 
     def perturb(self, amount):
         """Perturb the character by joggling the control points"""
@@ -173,7 +191,6 @@ class Handwriting(Texture):
                     first_stroke = len(cp) - 1
                     used_strokes[first_stroke] = 1
                 if used_strokes[second_stroke] > 1:
-                    print(second_stroke)
                     cp.append(copy.deepcopy(cp[second_stroke]))
                     used_strokes[second_stroke] -= 1
                     second_stroke = len(cp) - 1
@@ -207,7 +224,7 @@ class Handwriting(Texture):
 
     def B(self, t, i):
         """Evaluate the ith bezier curve at t."""
-        p = self.control_points[i]
+        p = i
 
         # Get the coefficients using coeffs(collect(B),t) in Matlab
         t2 = t*t
@@ -250,7 +267,8 @@ class Handwriting(Texture):
             """
             # Set variables to be in the form that Matlab outputs
             (u,v) = uv
-            ((p0u,p0v),(p1u,p1v),(p2u,p2v),(p3u,p3v)) = self.control_points[i]
+            ((p0u,p0v),(p1u,p1v),(p2u,p2v),(p3u,p3v)) = i
+                
             roots = np.roots(np.array((
                     ((p0u - 3*p1u + 3*p2u - p3u)*(3*p0u - 9*p1u + 9*p2u - 3*p3u) + (p0v - 3*p1v + 3*p2v - p3v)*(3*p0v - 9*p1v + 9*p2v - 3*p3v)),
                     (- (6*p0u - 12*p1u + 6*p2u)*(p0u - 3*p1u + 3*p2u - p3u) - (6*p0v - 12*p1v + 6*p2v)*(p0v - 3*p1v + 3*p2v - p3v) - (3*p0u - 6*p1u + 3*p2u)*(3*p0u - 9*p1u + 9*p2u - 3*p3u) - (3*p0v - 6*p1v + 3*p2v)*(3*p0v - 9*p1v + 9*p2v - 3*p3v)),
@@ -290,48 +308,79 @@ class Handwriting(Texture):
             else:
                 return False
 
+        def get_char_index(u, v):
+            """ Given a scaled u,v coordinate, take the integer parts
+                to choose which character goes with that coordinate.
+            """
+            return self.hash_table[
+                (self.hash_table[int(math.floor(u)) % len(self.hash_table)] +
+                int(math.floor(v))) % len(self.hash_table)] % len(self.characters)
+                
+        def in_char(c, uv, next_cp, prev_cp):
+            """ Given a decimal position of the character, find out
+                if the point is in the character or any decorations.
+            """
+            char = self.characters[c]
+            return any([in_curve_exact(uv, val) for val in
+                       char.stroke_list(prev_cp, next_cp)])
+        
+        def connect_next(u, v):
+            """ Find the control point to which the current character
+                will connect and translate into the current character's
+                coordinates.
+            """
+            c = get_char_index(u + 1, v)
+            (nu, nv) = self.control_points[c][3]
+            return (nu - 1 + self.h_space, nv)
+        
+        def connect_prev(u,v):
+            """Like connect_next but going to the previous character."""
+            c = get_char_index(u - 1, v)
+            (pu, pv) = self.control_points[c][3]
+            return (pu - 1 + self.h_space, pv)
+
         oneminus_h = 1.0 - self.h_space
         oneminus_v = 1.0 - self.v_space
-        scaled_u = int(self.scale * u / oneminus_h) + oneminus_h * (
-                   (self.scale * u  / oneminus_h) % 1)
-        scaled_v = int(self.scale * v / oneminus_v) + oneminus_v * (
-                   (self.scale * v / oneminus_v) % 1)
-        uv1 = np.array((scaled_u % 1, scaled_v % 1))
-        ### Randomly select a character to draw
-        c1 = self.hash_table[
-                (self.hash_table[int(scaled_u) % len(self.hash_table)] +
-                int(scaled_v)) % len(self.hash_table)] % len(self.characters)
-        # c1 = (int(scaled_u)*self.scale + int(scaled_v)) % len(self.characters)  # TEST
-
-        ### Finish drawing the previous character if necessary
-        # WARNING: int is used in place of floor here which may cause
-        #          problems for negative u, v
-        # XXX: There are still issues around the borders. Maybe have a check
-        #      ensuring you never have a negative index or (u,v)
-        scaled_u = (int((self.scale * u - self.h_space) / oneminus_h)
+        scaled_u  = int(self.scale * u / oneminus_h) + oneminus_h * (
+                    (self.scale * u  / oneminus_h) % 1)
+        scaled_v  = int(self.scale * v / oneminus_v) + oneminus_v * (
+                    (self.scale * v / oneminus_v) % 1)
+        shifted_u = (math.floor((self.scale * u - self.h_space) / oneminus_h)
                     + oneminus_h *
                     (((self.scale * u - self.h_space)  / oneminus_h) % 1)
                     + self.h_space)
-        scaled_v = (int((self.scale * v - self.v_space) / oneminus_v) +
+        shifted_v = (math.floor((self.scale * v - self.v_space) / oneminus_v) +
                     oneminus_v *
                     (((self.scale * v - self.v_space)  / oneminus_v) % 1)
                     + self.v_space)
-        uv2 = np.array((scaled_u % 1, scaled_v % 1))
-        c2 = self.hash_table[
-                (self.hash_table[int(scaled_u) % len(self.hash_table)] +
-                int(scaled_v)) % len(self.hash_table)] % len(self.characters)
-        # c2 = (int(scaled_u)*self.scale + int(scaled_v)) % len(self.characters) # TEST
-        # print c1, ": ", uv1, c2, ": ", uv2 # TEST
+        c1 = get_char_index(scaled_u, scaled_v)
+        uv1 = np.array((scaled_u % 1, scaled_v % 1))
+        c2 = get_char_index(shifted_u, scaled_v)
+        uv2 = np.array((shifted_u % 1, scaled_v % 1))
+        c3 = get_char_index(scaled_u, shifted_v)
+        uv3 = np.array((scaled_u  % 1, shifted_v % 1))
+        c4 = get_char_index(shifted_u, shifted_v)
+        uv4 = np.array((shifted_u % 1, shifted_v % 1))
 
-        in_c1 = any([in_curve_exact(uv1, val) for val in self.characters[c1]])
-        # TODO: 1) Determine when both characters need to be checked.
-        #       2) Determine where the edges are (and return False there)
-        #       3) 
-        if True: # uv2[0] < self.h_space or uv2[1] < self.v_space:
-            in_c2 = any([in_curve_exact(uv2, val) for val in self.characters[c2]])
-        else:
+        # Check which of the four surrounding characters may occur
+        in_c1 = in_char(c1, uv1,
+                connect_next(scaled_u, scaled_v),
+                connect_prev(scaled_u, scaled_v))
+        in_c4 = True
+        if shifted_u < 0.0:
             in_c2 = False
-        return (in_c1 or in_c2)
+            in_c4 = False
+        else:
+            in_c2 = in_char(c2, uv2, [], [])
+        if shifted_v < 0.0:
+            in_c3 = False
+            in_c4 = False
+        else:
+            in_c3 = in_char(c3, uv3, [], [])
+        if in_c4:
+            in_c4 = in_char(c4, uv4, [], [])
+
+        return (in_c1 or in_c2 or in_c3 or in_c4)
 
 if __name__ == '__main__':
     h = Handwriting()
