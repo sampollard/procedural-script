@@ -7,6 +7,7 @@ import copy
 import inspect
 import math
 import numpy as np
+import pprint
 import random
 
 class Texture():
@@ -40,8 +41,8 @@ class Character():
         uv = list(self.control_points[self.strokes[-1]][3])
         if next_cp:
             return  [uv,
-                    [(uv[0] - next_cp[0]) / 3, (uv[1] - next_cp[1]) / 3],
-                    [2*(uv[0] - next_cp[0]) / 3, 2*(uv[1] - next_cp[1]) / 3],
+                    [(uv[0] + next_cp[0]) / 3, (uv[1] + next_cp[1]) / 3],
+                    [2*(uv[0] + next_cp[0]) / 3, 2*(uv[1] + next_cp[1]) / 3],
                     list(next_cp)]
         else:
             return []
@@ -51,8 +52,8 @@ class Character():
         uv = list(self.control_points[self.strokes[-1]][0])
         if prev_cp:
             return  [uv,
-                    [(uv[0] - prev_cp[0]) / 3, (uv[1] - prev_cp[1]) / 3],
-                    [2*(uv[0] - prev_cp[0]) / 3, 2*(uv[1] - prev_cp[1]) / 3],
+                    [(uv[0] + prev_cp[0]) / 3, (uv[1] + prev_cp[1]) / 3],
+                    [2*(uv[0] + prev_cp[0]) / 3, 2*(uv[1] + prev_cp[1]) / 3],
                     list(prev_cp)]
         else:
             return []
@@ -316,7 +317,7 @@ class Handwriting(Texture):
                 (self.hash_table[int(math.floor(u)) % len(self.hash_table)] +
                 int(math.floor(v))) % len(self.hash_table)] % len(self.characters)
                 
-        def in_char(c, uv, next_cp, prev_cp):
+        def in_char(c, uv, prev_cp=None, next_cp=None):
             """ Given a decimal position of the character, find out
                 if the point is in the character or any decorations.
             """
@@ -329,13 +330,13 @@ class Handwriting(Texture):
                 will connect and translate into the current character's
                 coordinates.
             """
-            c = get_char_index(u + 1, v)
+            c = get_char_index(u + 1 - self.h_space, v)
             (nu, nv) = self.control_points[c][3]
             return (nu - 1 + self.h_space, nv)
         
         def connect_prev(u,v):
             """Like connect_next but going to the previous character."""
-            c = get_char_index(u - 1, v)
+            c = get_char_index(u - 1 + self.h_space, v)
             (pu, pv) = self.control_points[c][3]
             return (pu - 1 + self.h_space, pv)
 
@@ -364,21 +365,23 @@ class Handwriting(Texture):
 
         # Check which of the four surrounding characters may occur
         in_c1 = in_char(c1, uv1,
-                connect_next(scaled_u, scaled_v),
-                connect_prev(scaled_u, scaled_v))
+                        connect_prev(scaled_u, scaled_v),
+                        connect_next(scaled_u, scaled_v))
         in_c4 = True
         if shifted_u < 0.0:
             in_c2 = False
             in_c4 = False
         else:
-            in_c2 = in_char(c2, uv2, [], [])
+            in_c2 = in_char(c2, uv2,
+                            connect_prev(shifted_u, scaled_v),
+                            connect_next()
         if shifted_v < 0.0:
             in_c3 = False
             in_c4 = False
         else:
-            in_c3 = in_char(c3, uv3, [], [])
+            in_c3 = in_char(c3, uv3)
         if in_c4:
-            in_c4 = in_char(c4, uv4, [], [])
+            in_c4 = in_char(c4, uv4)
 
         return (in_c1 or in_c2 or in_c3 or in_c4)
 
