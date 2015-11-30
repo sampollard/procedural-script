@@ -70,14 +70,14 @@ To model a handwritten language we assume the hand draws curves with thickness $
 
 To model each stroke (or part of a stroke), we define a B\'ezier curve $B(t)$ for $t \in [0,1]$ over four control points $p_0$, $p_1$, $p_2$, $p_3 \in \mathbb{R}^2$. For our purposes, the control points are in $[0,1]^2$. To clarify notation, $B(t) = \begin{bmatrix} B_u(t) & B_v(t) \end{bmatrix}^T$
 
-To determine whether this point lies inside or outside the region, we must first express $B(t)$ implicitly; for $t \in [0,1]$,
+To determine whether this point lies inside or outside the region, we must first express $B(t)$ implicitly. We define
 
 \[
 	B(t) = (1 - t)^3 p_0 + 3(1 - t)^2 t p_1 + 3(1 - t)t^2 p_2 + t^3 p_3
 \]
 where $p_i = (u_i, v_i)$, the coordinates of each control point.
 
-Next, we determine if a given point $q = (u,v)$ lies inside of the blue region. One way to accomplish this is to find the nearest point to $q$ on $B$, denoted $\hat{q} = (\hat{u}, \hat{v})$. Since $B$ is a parametrized curve there exists a $\hat{t}$ such that $B(\hat{t}) = \hat{q}$. Then, $q$ is contained in the stroke if and only if $||q - \hat{q}||_2 < \epsilon$ for some $\hat{t} \in [0,1]$. Notice that both the $\hat{q}$ and $\hat{t}$ may not be unique. This is unimportant since every $\hat{q}$ is the same distance from $q$. We find this $\hat{q}$ by observing the vector $\hat{q} - q$ is orthogonal to $\diff B / \diff t$. Notice there may exist multiple $\hat{t} \in [0,1]$ such that $B(\hat{t}) = \hat{q}$. Of these, we choose the $\hat{t}$ such that $||q - \hat{q}||_2$ is minimized. So we solve for $t$ in
+Next, we determine if a given point $q = (u,v)$ lies inside of the stroke. That is, there exists some $\hat{q} = B(\hat{t})$ such that $||q - \hat{q}||_2 < T(\hat{t})$. One way to accomplish this is to find the nearest point to $q$ on $B$, denoted $\hat{q} = (\hat{u}, \hat{v})$. Since $B$ is a parametrized curve there exists a $\hat{t}$ such that $B(\hat{t}) = \hat{q}$. Then, $q$ is contained in the stroke if and only if $||q - \hat{q}||_2 < \epsilon$ for some $\hat{t} \in [0,1]$. Notice that both the $\hat{q}$ and $\hat{t}$ may not be unique. This is unimportant since every $\hat{q}$ is the same distance from $q$. We find this $\hat{q}$ by observing the vector $\hat{q} - q$ is orthogonal to $\diff B / \diff t$. Notice there may exist multiple $\hat{t} \in [0,1]$ such that $B(\hat{t}) = \hat{q}$. Of these, we choose the $\hat{t}$ such that $||q - \hat{q}||_2$ is minimized. So we solve for $t$ in
 \begin{align*}
  0 &= \hat{q} \cdot \frac{\diff B}{\diff t} \\
   &= B_u(t)\frac{\diff B_u}{\diff t}(t) + B_v(t)\frac{\diff B_v}{\diff t}(t)

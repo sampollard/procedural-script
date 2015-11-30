@@ -41,9 +41,11 @@ class Character():
         uv = list(self.control_points[self.strokes[-1]][3])
         if next_cp:
             return  [uv,
-                    [(uv[0] + next_cp[0]) / 3, (uv[1] + next_cp[1]) / 3],
-                    [2*(uv[0] + next_cp[0]) / 3, 2*(uv[1] + next_cp[1]) / 3],
-                    list(next_cp)]
+                     [uv[0] + (next_cp[0] - uv[0]) / 3,
+                      min(uv[1], next_cp[1])],
+                     [uv[0] + 2*(next_cp[0] - uv[0]) / 3,
+                      min(uv[1], next_cp[1])],
+                     list(next_cp)]
         else:
             return []
 
@@ -51,10 +53,12 @@ class Character():
         """Link from this character's first stroke to prev_cp."""
         uv = list(self.control_points[self.strokes[-1]][0])
         if prev_cp:
-            return  [uv,
-                    [(uv[0] + prev_cp[0]) / 3, (uv[1] + prev_cp[1]) / 3],
-                    [2*(uv[0] + prev_cp[0]) / 3, 2*(uv[1] + prev_cp[1]) / 3],
-                    list(prev_cp)]
+            return  [list(prev_cp),
+                     [prev_cp[0] + (uv[0] - prev_cp[0]) / 3,
+                      min(uv[1], prev_cp[1])],
+                     [prev_cp[0] + 2*(uv[0] - prev_cp[0]) / 3,
+                      min(uv[1], prev_cp[1])],
+                     uv]
         else:
             return []
     
@@ -331,8 +335,8 @@ class Handwriting(Texture):
                 coordinates.
             """
             c = get_char_index(u + 1 - self.h_space, v)
-            (nu, nv) = self.control_points[c][3]
-            return (nu - 1 + self.h_space, nv)
+            (nu, nv) = self.control_points[c][0]
+            return (nu + 1 - self.h_space, nv)
         
         def connect_prev(u,v):
             """Like connect_next but going to the previous character."""
@@ -346,6 +350,8 @@ class Handwriting(Texture):
                     (self.scale * u  / oneminus_h) % 1)
         scaled_v  = int(self.scale * v / oneminus_v) + oneminus_v * (
                     (self.scale * v / oneminus_v) % 1)
+        # shift: f(x) = floor((x-0.25)/0.75) + 0.75 mod((x-0.25)/0.75,1) + 0.25
+        # scale: (x) = floor(x/0.75)+ 0.75 mod(x/0.75,1)
         shifted_u = (math.floor((self.scale * u - self.h_space) / oneminus_h)
                     + oneminus_h *
                     (((self.scale * u - self.h_space)  / oneminus_h) % 1)
@@ -354,36 +360,39 @@ class Handwriting(Texture):
                     oneminus_v *
                     (((self.scale * v - self.v_space)  / oneminus_v) % 1)
                     + self.v_space)
-        c1 = get_char_index(scaled_u, scaled_v)
-        uv1 = np.array((scaled_u % 1, scaled_v % 1))
-        c2 = get_char_index(shifted_u, scaled_v)
-        uv2 = np.array((shifted_u % 1, scaled_v % 1))
-        c3 = get_char_index(scaled_u, shifted_v)
-        uv3 = np.array((scaled_u  % 1, shifted_v % 1))
-        c4 = get_char_index(shifted_u, shifted_v)
-        uv4 = np.array((shifted_u % 1, shifted_v % 1))
+        # cc: center, cl: left, ca: above, cal: above and to the left
+        cc = get_char_index(scaled_u, scaled_v)
+        uvc = np.array((scaled_u % 1, scaled_v % 1))
+        cl = get_char_index(shifted_u, scaled_v)
+        uvl = np.array((shifted_u % 1, scaled_v % 1))
+        ca = get_char_index(scaled_u, shifted_v)
+        uva = np.array((scaled_u  % 1, shifted_v % 1))
+        cal = get_char_index(shifted_u, shifted_v)
+        uval = np.array((shifted_u % 1, shifted_v % 1))
 
         # Check which of the four surrounding characters may occur
-        in_c1 = in_char(c1, uv1,
+        in_cc = in_char(cc, uvc,
                         connect_prev(scaled_u, scaled_v),
                         connect_next(scaled_u, scaled_v))
-        in_c4 = True
+        in_cal = True
         if shifted_u < 0.0:
-            in_c2 = False
-            in_c4 = False
+            in_cl = False
+            in_cal = False
         else:
-            in_c2 = in_char(c2, uv2,
-                            connect_prev(shifted_u, scaled_v),
-                            connect_next()
+            in_cl = in_char(cl, uvl)#,
+                            # connect_prev(shifted_u, scaled_v),
+                            # connect_next(shifted_u, scaled_v))
         if shifted_v < 0.0:
-            in_c3 = False
-            in_c4 = False
+            in_ca = False
+            in_cal = False
         else:
-            in_c3 = in_char(c3, uv3)
-        if in_c4:
-            in_c4 = in_char(c4, uv4)
+            in_ca = in_char(ca, uva)#,
+                            # connect_prev(scaled_u, shifted_v),
+                            # connect_next(scaled_u, shifted_v))
+        if in_cal:
+            in_cal = in_char(cal, uval)
 
-        return (in_c1 or in_c2 or in_c3 or in_c4)
+        return (in_cc or in_cl or in_ca or in_cal)
 
 if __name__ == '__main__':
     h = Handwriting()
