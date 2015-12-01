@@ -16,10 +16,11 @@ if __name__ == "__main__":
     main_dir = os.getcwd() 
 else:
     main_dir = os.path.split(os.path.abspath(__file__))[0]
-data_dir = os.path.join(main_dir, 'data')
+
+xres,yres = (640,640)
 
 def handleInput(screen):
-    #Handle Keyboard Events
+    # Handle Keyboard and Mouse Events
     for event in pygame.event.get():
         if event.type == QUIT:
             return True
@@ -31,6 +32,9 @@ def handleInput(screen):
                 fname = raw_input("File name?  ")
                 pygame.event.set_blocked(0)
                 pygame.image.save(screen,fname)
+        elif event.type == MOUSEBUTTONDOWN:
+            x,y = pygame.mouse.get_pos()
+            print("clicked at " + str(float(x)/xres) + "," + str(float(y)/yres))
     return False
 
 def clamp(x, low, high):
@@ -40,7 +44,7 @@ def clamp(x, low, high):
 
 def screen_init():
     """Initializes the pygame surface. Returns a screen and a background."""
-    screen = pygame.display.set_mode((640,640))
+    screen = pygame.display.set_mode((xres,yres))
 
     #Create The Backgound
     background = pygame.Surface(screen.get_size())
@@ -60,7 +64,7 @@ def draw_image_explicit(colorAt):
     #Prepare Game Objects
     going = True
     pixelsize = 256 # power of 2
-    width, height = screen.get_size()
+    width, height = xres, yres
     
     clock = pygame.time.Clock()
     start = time.clock()
@@ -86,36 +90,6 @@ def draw_image_explicit(colorAt):
             if pixelsize == 0:
                 print("Finished drawing. Elapsed time = {}s".format(
                         time.clock() - start))
-
-#def draw_image_implicit(representation):
-    #""" Given an implicit representation of an image, run through the
-        #parameterized value to draw each object. Assumes a single parameter
-        #with acceptable values in [0,1].
-    #"""
-    #screen, background = screen_init()
-    
-    ##Prepare Game Objects
-    #going = True
-    #width, height = screen.get_size()
-    #granularity = 2  # Doubles each iteration
-    
-    #start = time.clock()
-    #clock = pygame.time.Clock()
-    #while going:
-        #going = not(handleInput(screen))
-        ## start drawing loop
-        #while granularity < max(width, height):
-            #print(granularity)
-            #for t in np.linspace(0.0,1.0, granularity + 1):
-                #background.fill(representation(t))
-            ## clock.tick(1)
-            #background.fill(color, ((x,y),(pixelsize,pixelsize)))
-            ##draw background into screen
-            #screen.blit(background, (0,0))
-            #pygame.display.flip()
-            #if granularity > max_time:
-                #print("Finished drawing. Elapsed time = {}s".format(
-                        #time.clock() - start))
     
 def main():
     pygame.init()
