@@ -96,7 +96,7 @@ def main():
     print("Press s to save, esc to exit")
     pygame.display.set_caption("Handwriting!")
     stroke = bezier.Handwriting(
-            scale=4, connect_p=0, brush=lambda t: 0.1*(1-t), min_s=2, max_s=2)
+            scale=4, brush=lambda t: 0.1*(1-t), min_s=2, max_s=5)
     print(stroke)  # Print some information about the texture (TEST)
     draw_image_explicit(stroke.evaluate)
 

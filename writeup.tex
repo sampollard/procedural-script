@@ -16,7 +16,7 @@
 
 \pagestyle{fancy}
 \lhead{Sam Pollard}
-\rhead{CS 580 -- Fall 2015 -- Matthews \\ \today}
+\rhead{CS 580 -- Fall 2015 -- Matthews}
 \cfoot{\thepage}
 
 % To indent new paragraphs in an enumerated list. (my enum items are rather long!)
@@ -38,17 +38,22 @@
 \DeclareMathOperator{\id}{id}
 \newcommand*\diff{\mathop{}\!\mathrm{d}}
 
-\begin{document}
+\title{Procedurally Generated Handwriting}
+\author{Sam Pollard \\ Western Washington University}
+\date{CS 580 -- Fall 2015 -- Geoff Matthews \\ \today}
 
-\begin{center}
-{\Large Procedurally Generated Handwriting} \\
+\begin{document}
+\maketitle
+
+\begin{figure}[ht]
+\centering
 \begin{tikzpicture}[scale=2]%,cap=round,>=latex]
 	\coordinate (p0) at (0,0);
 	\coordinate (p1) at (-1,2);
 	\coordinate (p2) at (1,2);
 	\coordinate (p3) at (1,1);
 	\coordinate (qhat) at (-0.29,1);
-	\coordinate (uv) at (-1,1.1);
+	\coordinate (uv) at (-1,1.07);
 	\coordinate (tangent) at (-0.24,1.5);
     % Draw a border around the curve
     \draw[double distance=14mm,line width=1pt,line join=round,line cap=round,blue] (p0) .. controls (p1) and (p2) .. (p3);
@@ -64,9 +69,12 @@
     \tkzMarkRightAngle[size=0.15](uv,qhat,tangent);
     \filldraw[black] (uv) circle[radius=1.5pt] node[anchor=east] {$q$} -- (qhat);
 \end{tikzpicture}
-\end{center}
+\caption{A sample bezier curve with its surrounding border}
+\label{bezier}
+\end{figure}
 
-To model a handwritten language we assume the hand draws curves with thickness $\epsilon$ which may change based on physical attributes of the curve. For a fountain pen, the thickness of the stroke depends on the minimum and maximum widths of the nib, the angle of the nib to the paper, and tangent of the stroke with the angle of the nib. For brushes, the amount of ink on the bristles and the force with which the brush is pressed also have an effect. Of course, there are many other factors so in general we define a function $T$ which returns a value in $[0,\infty)$. We denote $\epsilon$ the output of this function. The $T$ used for in [Figure 1] is a constant function.
+\section{Introduction}
+To model a handwritten language we assume the hand draws curves with thickness $\epsilon$ which may change based on physical attributes of the curve. For a fountain pen, the thickness of the stroke depends on the minimum and maximum widths of the nib, the angle of the nib to the paper, and tangent of the stroke with the angle of the nib. For brushes, the amount of ink on the bristles and the force with which the brush is pressed also have an effect. There may be other factors so in general we define a function $T$ which returns a value in $[0,\infty)$. We denote $\epsilon$ the output of this function. The $T$ used for in Fig. \ref{bezier} is a constant function.
 
 To model each stroke (or part of a stroke), we define a B\'ezier curve $B(t)$ for $t \in [0,1]$ over four control points $p_0$, $p_1$, $p_2$, $p_3 \in \mathbb{R}^2$. For our purposes, the control points are in $[0,1]^2$. To clarify notation, $B(t) = \begin{bmatrix} B_u(t) & B_v(t) \end{bmatrix}^T$
 
@@ -84,6 +92,23 @@ Next, we determine if a given point $q = (u,v)$ lies inside of the stroke. That 
 \end{align*}
 which amounts to finding the real roots of a fifth-order polynomial. For the exact formula of this polynomial see the attached Python code.
 
-\section{Connecting Characters}
-Many forms of handwriting and calligraphy join the individual characters. For example, each letter of the Arabic alphabet has a different form depending on if there are other letters preceding or succeeding it. Since each character is defined in its own $[0,1]$ box, we overlay each character vertically and horizontally to allow characters to more easily connect and to spill over. Typographically, this is adjusting the spacing and the kerning. 
+\section{The \texttt{Handwriting} Texture}
+We define a texture generically as a function which takes as input a $(u,v)$ coordinate and returns some object. This object may be an RGB color value or another texture. In the case of handwriting, we return one texture if $(u,v)$ is inside the curve and a second texture otherwise. The $T$ function described in Section 1 is known as the brush in the \texttt{Handwriting} class. This implementation puts $T$ as a function only of the B\'ezier curve's parameter $t$.
+
+A given \texttt{Handwriting} instance has a list of characters defined by zero or more B\'ezier curves. For each $(u,v)$ texture coordinate, we determine if $\hat{q}$ is contained in any of the curves in the nearby characters.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[scale=2]
+	\filldraw[fill=blue!40!white, draw=black] (0,0) rectangle (1,1);
+	\filldraw[fill=red!40!white, draw=black] (-0.75,0) rectangle (0.25,1);
+	\filldraw[fill=orange!40!white, draw=black] (-0.75,0.75) rectangle (0.25,1.75);
+	\filldraw[fill=green!40!white, draw=black] (0,0.75) rectangle (1,1.75);
+\end{tikzpicture}
+\end{figure}
+
+\section{Lessons Learned}
+
+\section{Future Work}
+
 \end{document}

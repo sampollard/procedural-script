@@ -71,7 +71,7 @@ class Character():
         return slist
 
     def perturb(self, amount):
-        """Perturb the character by joggling the control points"""
+        """Perturb the character by wiggling the control points."""
         if not 0.0 < amount < 1.0:
             raise ValueError("amount must be in [0,1]")
         pass
@@ -87,13 +87,17 @@ class Handwriting(Texture):
         brush          Function to determine the width of the stroke.
                          May depend on the parameter of the spline.
         scale          How many characters fit on one line.
+        seed           The seed for the random number generator
         strokes        The number of unique strokes.
         unique_chars   The number of different characters. May increase
                          if connect_p is nonzero.
-        connect_p      The probability that one character will connect
-                         with the next.
         min_s          The minimum number of strokes per character.
         max_s          The maximum number of strokes per character.
+        [hv]_stack     Determine how much the characters overlay with each
+                         other across the vertical and horizontal axes.
+        [hv]_border    Determines how far away from the edge
+                         (u or v == 0 or 1) the control points may be.
+                         Recommended to be greater than max(brush(t)).
     """
 
     def __init__(self,
@@ -101,22 +105,26 @@ class Handwriting(Texture):
                  texture2=Texture(lambda u,v: (1,1,1)),
                  brush=lambda t: 0.1,
                  scale=1,
+                 seed=0,
                  unique_strokes=30,
                  unique_chars=25,
-                 connect_p=0.8,
                  min_s=2,
                  max_s=3,
-                 v_space=0.3,
-                 h_space=0.3):
+                 v_stack=0.3,
+                 h_stack=0.3,
+                 h_border=0.2,
+                 v_border=0.2):
         # Validate parameters
-        if not 0.0 <= connect_p <= 1.0:
-            raise ValueError("connect_p must be a probability")
         # Greater than 0.5 means more than 2 characters may contained
         # in a given box, complicating things.
-        if not 0.0 <= v_space <= 0.5:
-            raise ValueError("v_space must be in [0,0.5]")
-        if not 0.0 <= h_space <= 0.5:
-            raise ValueError("h_space must be in [0,0.5]")
+        if not 0.0 <= v_stack <= 0.5:
+            raise ValueError("v_stack must be in [0,0.5]")
+        if not 0.0 <= h_stack <= 0.5:
+            raise ValueError("h_stack must be in [0,0.5]")
+        if not 0.0 <= h_border < 0.5:
+            raise ValueError("h_border must be in [0,0.5)")
+        if not 0.0 <= v_border < 0.5:
+            raise ValueError("v_border must be in [0,0.5)")
 
         self.tex1 = texture1     # Inside bezier curve
         self.tex2 = texture2     # Outside bezier curve
@@ -124,19 +132,17 @@ class Handwriting(Texture):
         # unique_strokes = len(control_points) may increase when connect_p > 0.
         self.octaves = 9         # Accurate to dimension / 2^(octaves+1) pixels
         self.eps = lambda t: brush(t) / self.scale
-        self.h_space = h_space
-        self.v_space = v_space
+        self.h_stack = h_stack
+        self.v_stack = v_stack
 
         # Create a random hash table to determine which and how many
         # bezier curves are used for each character.
-        random.seed(0)
+        random.seed(seed)
         hash_sz = 257  # Choose a prime number for the hash size
         self.hash_table = list(range(hash_sz))
         random.shuffle(self.hash_table)
 
         # Create the control points. 4 control points = 1 bezier curve
-        h_border = 0.02
-        v_border = 0.02
         def cp_random():
             """Create a random pair [u,v] used as a control point"""
             return [h_border + (1 - 2*h_border) * random.random(),
@@ -168,31 +174,6 @@ class Handwriting(Texture):
                 except KeyError:
                     used_strokes[char[-1]] = 1
             self.characters.append(char)
-        
-        # Connect the characters at the box edges (u = 1.0 or 0.0)
-        # unless the character is at the end of a row
-        # cp = self.control_points
-        # for i in range(unique_chars - 1):
-        #     if random.random() < connect_p and i % scale < scale - 1:
-        #         first_stroke = self.characters[i][-1]
-        #         second_stroke = self.characters[i + 1][0]
-        #         # If the stroke is used in more than one place then make
-        #         # a copy and modify it
-        #         if used_strokes[first_stroke] > 1:
-        #             cp.append(copy.deepcopy(cp[first_stroke]))
-        #             used_strokes[first_stroke] -= 1
-        #             first_stroke = len(cp) - 1
-        #             used_strokes[first_stroke] = 1
-        #         if used_strokes[second_stroke] > 1:
-        #             cp.append(copy.deepcopy(cp[second_stroke]))
-        #             used_strokes[second_stroke] -= 1
-        #             second_stroke = len(cp) - 1
-        #             used_strokes[second_stroke] = 1
-
-        #         cp[first_stroke][3]  = [1.0, cp[second_stroke][0][1]]
-        #         cp[second_stroke][0] = [0.0, cp[second_stroke][0][1]]
-        #         self.characters[i][-1] = first_stroke
-        #         self.characters[i + 1][0] = second_stroke
 
 
     def __repr__(self):
@@ -322,41 +303,41 @@ class Handwriting(Texture):
                 will connect and translate into the current character's
                 coordinates.
             """
-            c = get_char_index(u + 1 - self.h_space, v)
+            c = get_char_index(u + 1 - self.h_stack, v)
             (nu, nv) = self.control_points[c][0]
-            return (nu + 1 - self.h_space, nv)
+            return (nu + 1 - self.h_stack, nv)
         
         def connect_prev(u,v):
             """Like connect_next but going to the previous character."""
-            c = get_char_index(u - 1 + self.h_space, v)
+            c = get_char_index(u - 1 + self.h_stack, v)
             (pu, pv) = self.control_points[c][3]
-            return (pu - 1 + self.h_space, pv)
+            return (pu - 1 + self.h_stack, pv)
 
-        oneminus_h = 1.0 - self.h_space
-        oneminus_v = 1.0 - self.v_space
+        oneminus_h = 1.0 - self.h_stack
+        oneminus_v = 1.0 - self.v_stack
         def scale_u(u):
             """g(x) = floor(x/(1-h))+ (1-h) mod(x/(1-h),1)."""
-            return (int(self.scale * u / (1.0 - self.h_space))
-                        + (1.0 - self.h_space) *
-                        ((self.scale * u  / (1.0 - self.h_space)) % 1))
+            return (int(self.scale * u / (1.0 - self.h_stack))
+                        + (1.0 - self.h_stack) *
+                        ((self.scale * u  / (1.0 - self.h_stack)) % 1))
         
         def scale_v(v):
-            return (int(self.scale * v / (1.0 - self.v_space))
-                        + (1.0 - self.v_space) * (
-                        (self.scale * v / (1.0 - self.v_space)) % 1))
+            return (int(self.scale * v / (1.0 - self.v_stack))
+                        + (1.0 - self.v_stack) * (
+                        (self.scale * v / (1.0 - self.v_stack)) % 1))
             
         def shift_u(u):
             """f(x) = floor((x-v)/(1-v)) + (1-v)mod((x-v)/(1-v),1) + v"""
-            return (math.floor((self.scale * u - self.h_space) / oneminus_h)
+            return (math.floor((self.scale * u - self.h_stack) / oneminus_h)
                     + oneminus_h *
-                    (((self.scale * u - self.h_space)  / oneminus_h) % 1)
-                    + self.h_space)
+                    (((self.scale * u - self.h_stack)  / oneminus_h) % 1)
+                    + self.h_stack)
 
         def shift_v(v):
-            return (math.floor((self.scale * v - self.v_space) / oneminus_v) +
+            return (math.floor((self.scale * v - self.v_stack) / oneminus_v) +
                     oneminus_v *
-                    (((self.scale * v - self.v_space)  / oneminus_v) % 1)
-                    + self.v_space)
+                    (((self.scale * v - self.v_stack)  / oneminus_v) % 1)
+                    + self.v_stack)
 
         scaled_u = scale_u(u)
         scaled_v = scale_v(v)
@@ -375,24 +356,24 @@ class Handwriting(Texture):
 
         # Check which of the four surrounding characters may occur.
         # We don't draw characters that can't fit entirely in the surface.
-        # print(scale_u(1.0), scale_v(1.0), shift_u(1.0), shift_v(1.0))
         in_cal = True
-        if (math.ceil(scaled_u) >= scale_u(1.0)
-                or math.ceil(scaled_v) >= scale_v(1.0)):
-            # print "scale", scaled_u, scaled_v
+        if (scaled_u + 1 - self.h_stack >= scale_u(1.0)
+                or scaled_v + 1 - self.v_stack >= scale_v(1.0)):
             in_cc = False
         else:
             in_cc = in_char(cc, uvc)
 
-        if shifted_u < 0.0 or math.ceil(shifted_u) >= shift_u(1.0):
-            # print "shift u", shifted_u, scaled_v
+        if (shifted_u < 0.0
+                or shifted_u + 1 - self.h_stack >= shift_u(1.0)
+                or scaled_v + 1 - self.v_stack >= scale_v(1.0)):
             in_cl = False
             in_cal = False
         else:
             in_cl = in_char(cl, uvl)
 
-        if shifted_v < 0.0 or math.ceil(shifted_v) >= shift_v(1.0):
-            # print "shift v", scaled_u, shifted_v
+        if (shifted_v < 0.0
+                or scaled_u + 1 - self.h_stack >= scale_u(1.0)
+                or shifted_v + 1 - self.v_stack >= shift_v(1.0)):
             in_ca = False
             in_cal = False
         else:
