@@ -316,28 +316,23 @@ class Handwriting(Texture):
         oneminus_h = 1.0 - self.h_stack
         oneminus_v = 1.0 - self.v_stack
         def scale_u(u):
-            """g(x) = floor(x/(1-h))+ (1-h) mod(x/(1-h),1)."""
-            return (int(self.scale * u / (1.0 - self.h_stack))
-                        + (1.0 - self.h_stack) *
-                        ((self.scale * u  / (1.0 - self.h_stack)) % 1))
-        
+            su = self.scale * u
+            return su + self.h_stack * math.floor(su / (1 - self.h_stack))
+
         def scale_v(v):
-            return (int(self.scale * v / (1.0 - self.v_stack))
-                        + (1.0 - self.v_stack) * (
-                        (self.scale * v / (1.0 - self.v_stack)) % 1))
+            sv = self.scale * v
+            return sv + self.v_stack * math.floor(sv / (1 - self.v_stack))
+
             
         def shift_u(u):
-            """f(x) = floor((x-v)/(1-v)) + (1-v)mod((x-v)/(1-v),1) + v"""
-            return (math.floor((self.scale * u - self.h_stack) / oneminus_h)
-                    + oneminus_h *
-                    (((self.scale * u - self.h_stack)  / oneminus_h) % 1)
-                    + self.h_stack)
+            su = self.scale * u
+            h = self.h_stack
+            return su + h * math.floor((su-h) / (1-h))
 
         def shift_v(v):
-            return (math.floor((self.scale * v - self.v_stack) / oneminus_v) +
-                    oneminus_v *
-                    (((self.scale * v - self.v_stack)  / oneminus_v) % 1)
-                    + self.v_stack)
+            sv = self.scale * v
+            s = self.v_stack
+            return sv + s * math.floor((sv - s) / (1 - s))
 
         scaled_u = scale_u(u)
         scaled_v = scale_v(v)
