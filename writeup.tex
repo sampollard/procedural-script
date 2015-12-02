@@ -7,8 +7,10 @@
 \usepackage[top=1.25in, bottom=1.25in, right=1in, left=0.5in, headheight=15pt]{geometry}
 \usepackage{amsmath, amssymb, amsthm}
 \usepackage{fancyhdr, setspace}
+
 \usepackage{tikz}
 \usepackage{tkz-euclide}
+\usetikzlibrary{decorations.pathreplacing}
 \usetkzobj{all}
 
 \renewcommand{\headrulewidth}{0pt}
@@ -74,7 +76,7 @@
 \end{figure}
 
 \section{Introduction}
-To model a handwritten language we assume the hand draws curves with thickness $\epsilon$ which may change based on physical attributes of the curve. For a fountain pen, the thickness of the stroke depends on the minimum and maximum widths of the nib, the angle of the nib to the paper, and tangent of the stroke with the angle of the nib. For brushes, the amount of ink on the bristles and the force with which the brush is pressed also have an effect. There may be other factors so in general we define a function $T$ which returns a value in $[0,\infty)$. We denote $\epsilon$ the output of this function. The $T$ used for in Fig. \ref{bezier} is a constant function.
+To model a handwritten language we assume the hand draws curves with thickness $\epsilon$ which may change based on physical attributes of the curve. For a fountain pen, the thickness of the stroke depends on the minimum and maximum widths of the nib, the angle of the nib to the paper, and tangent of the stroke with the angle of the nib. For brushes, the amount of ink on the bristles and the force with which the brush is pressed also have an effect. There may be other factors so in general we define a function $T$ which returns a value in $[0,\infty)$. We denote $\epsilon$ the output of this function. The $T$ used for in Fig.\,\ref{bezier} is a constant function.
 
 To model each stroke (or part of a stroke), we define a B\'ezier curve $B(t)$ for $t \in [0,1]$ over four control points $p_0$, $p_1$, $p_2$, $p_3 \in \mathbb{R}^2$. For our purposes, the control points are in $[0,1]^2$. To clarify notation, $B(t) = \begin{bmatrix} B_u(t) & B_v(t) \end{bmatrix}^T$
 
@@ -93,19 +95,41 @@ Next, we determine if a given point $q = (u,v)$ lies inside of the stroke. That 
 which amounts to finding the real roots of a fifth-order polynomial. For the exact formula of this polynomial see the attached Python code.
 
 \section{The \texttt{Handwriting} Texture}
-We define a texture generically as a function which takes as input a $(u,v)$ coordinate and returns some object. This object may be an RGB color value or another texture. In the case of handwriting, we return one texture if $(u,v)$ is inside the curve and a second texture otherwise. The $T$ function described in Section 1 is known as the brush in the \texttt{Handwriting} class. This implementation puts $T$ as a function only of the B\'ezier curve's parameter $t$.
+We define a texture as a function which takes as input a $(u,v)$ coordinate and returns either another texture (which can in turn be evaluated at $(u,v)$) or an RGB color value. In the case of handwriting, we return one texture if $(u,v)$ is inside the curve and a second texture otherwise. The $T$ function described in Section 1 is known as the brush in the \texttt{Handwriting} class. This implementation defines $T$ as a function only of the B\'ezier curve's parameter $t$.
 
 A given \texttt{Handwriting} instance has a list of characters defined by zero or more B\'ezier curves. For each $(u,v)$ texture coordinate, we determine if $\hat{q}$ is contained in any of the curves in the nearby characters.
 
+TODO: Define what a character is.
+
 \begin{figure}[ht]
 \centering
-\begin{tikzpicture}[scale=2]
-	\filldraw[fill=blue!40!white, draw=black] (0,0) rectangle (1,1);
-	\filldraw[fill=red!40!white, draw=black] (-0.75,0) rectangle (0.25,1);
-	\filldraw[fill=orange!40!white, draw=black] (-0.75,0.75) rectangle (0.25,1.75);
-	\filldraw[fill=green!40!white, draw=black] (0,0.75) rectangle (1,1.75);
+\begin{tikzpicture}[scale=2, fill opacity=0.4, draw opacity=1]
+	\filldraw[fill=yellow!60!white, draw=black] (-0.75,0) rectangle (0.25,1);
+	\filldraw[fill=orange!60!white, draw=black] (-0.75,0.75) rectangle (0.25,1.75);
+	\filldraw[fill=green!60!white, draw=black] (0,0.75) rectangle (1,1.75);
+	\filldraw[fill=blue!60!white, draw=black] (0,0) rectangle (1,1);
+	% The gray areas on the bottom right sides
+	\filldraw[fill=black!60!white, draw=black, dashed] (0.75,1.75) rectangle (1,0);
+	\filldraw[fill=black!60!white, draw=black, dashed] (-0.75,0) rectangle (1,0.25);
+	\draw[red, very thick] (0,1) rectangle (0.75,0.25);
+	% Label
+	\draw [decorate,decoration={brace},yshift=1pt] (0,1.75) -- (0.25,1.75) node [black, midway, yshift=8pt, opacity=1] {$h$};
+	\draw [decorate,decoration={brace},xshift=1pt] (1,1) -- (1,0.75) node [black, midway, opacity=1, xshift=6pt] {$v$};
+	\draw (0.5, 0.5) [black, opacity=1] node {$C_c$};
+	\draw (-0.25, 0.5) [opacity=1] node {$C_l$};
+	\draw (-0.25, 1.25) [opacity=1] node {$C_{al}$};
+	\draw (0.5, 1.25) [opacity=1] node {$C_a$};
 \end{tikzpicture}
+\label{character-boxes}
+\caption{A point inside of the red box may be inside any of $C_{al}$, $C_c$, $C_a$, or $C_l$.}
 \end{figure}
+
+To make the writing look more natural, we wish to have characters overlap. This may be specified with $h$ and $v$. If $h,v \in [0,0.5)$ then there will never be more than four characters present in any given point. Consider Fig.\,\ref{character-boxes}. If we assume each colored box is $[0,1]^2$ and we overlay each character so that the overlap horizontally is $h$ and the overlap vertically is $v$, for each character $C$ we must also check the characters to the left, above, and diagonally above and to the left of $C$. We do not need to check the other surrounding characters because these will be checked if $(u,v)$ is in the first $[1-h] \times [1-v]$ box of the next character. This box is outlined with thick, red lines in Fig.\,\ref{character-boxes}.
+
+Then, given some coordinate $(u,v)$ we transform the coordinate so we can determine which character box the point is contained in as well as where inside the box. This is achieved with the function
+\[
+	f(u) = \left\lfloor \frac{x - h}{1-h} \right\rfloor + (1-h)\mod \left(\frac{x}{1-h}, 1\right)
+\]
 
 \section{Lessons Learned}
 
