@@ -1,18 +1,24 @@
 % CSCI 580 Project - Fall 2015 - Western Washington University
 % Author: Sam Pollard (pollars at students dot wwu dot edu)
-% Last Modified: November 24, 2015
+% Last Modified: December 3, 2015
 % Code taken from Geof Matthews (github.com/geofmatthews/csci480)
 
 \documentclass[12pt]{article}
 \usepackage[top=1.25in, bottom=1.25in, right=1in, left=0.5in, headheight=15pt]{geometry}
+
 \usepackage{amsmath, amssymb, amsthm}
 \usepackage{fancyhdr}
+\usepackage{url}
+
+\usepackage{graphicx}
+\DeclareGraphicsExtensions{.png}
 
 \usepackage{tikz}
 \usepackage{tkz-euclide}
 \usetikzlibrary{decorations.pathreplacing}
 \usetkzobj{all}
 \usepackage{pgfplots}
+\pgfplotsset{compat=1.9}
 
 \renewcommand{\headrulewidth}{0pt}
 \setlength{\headheight}{30pt}
@@ -41,7 +47,7 @@
 \DeclareMathOperator{\id}{id}
 \newcommand*\diff{\mathop{}\!\mathrm{d}}
 
-\title{Procedurally Generated Handwriting}
+\title{Procedurally Generated Script}
 \author{Sam Pollard \\ Western Washington University}
 \date{CS 580 -- Fall 2015 -- Geoff Matthews \\ \today}
 
@@ -49,6 +55,20 @@
 \maketitle
 
 \begin{figure}[ht]
+	\vspace{-30pt}
+	\centering
+	\includegraphics[width=3.5in]{sample.png}
+	\label{sample}
+	\vspace{-18pt}
+	\caption{Random characters using $T(t) = 0.1(1-t)$.}
+\end{figure}
+
+\section{Introduction}
+This model is in line with the Metafont language, which models characters as curves with finite width. This is in contrast to languages like PostScript and TrueType which describe the outline of each character.
+
+This decision is based on the assumption the hand draws curves with thickness $\epsilon$ which may change based on physical attributes of the curve. There may be many factors which affect the thickness of a curve so in general we define a function $T$ which returns a value in $[0,\infty)$. We denote $\epsilon$ the output of this function. The $T$ used for in Fig.~\ref{bezier} is a constant function.
+
+\begin{figure}
 \centering
 \begin{tikzpicture}[scale=2]%,cap=round,>=latex]
 	\coordinate (p0) at (0,0);
@@ -72,12 +92,9 @@
     \tkzMarkRightAngle[size=0.15](uv,qhat,tangent);
     \filldraw[black] (uv) circle[radius=1.5pt] node[anchor=east] {$q$} -- (qhat);
 \end{tikzpicture}
-\caption{A sample bezier curve with its surrounding border}
+\caption{A sample bezier curve with a constant thickness $\epsilon$.}
 \label{bezier}
 \end{figure}
-
-\section{Introduction}
-To model a handwritten language we assume the hand draws curves with thickness $\epsilon$ which may change based on physical attributes of the curve. For a fountain pen, the thickness of the stroke depends on the minimum and maximum widths of the nib, the angle of the nib to the paper, and tangent of the stroke with the angle of the nib. For brushes, the amount of ink on the bristles and the force with which the brush is pressed also have an effect. There may be other factors so in general we define a function $T$ which returns a value in $[0,\infty)$. We denote $\epsilon$ the output of this function. The $T$ used for in Fig.\,\ref{bezier} is a constant function.
 
 To model each stroke (or part of a stroke), we define a B\'ezier curve $B(t)$ for $t \in [0,1]$ over four control points $p_0$, $p_1$, $p_2$, $p_3 \in \mathbb{R}^2$. For our purposes, the control points are in $[0,1]^2$. To clarify notation, $B(t) = \begin{bmatrix} B_u(t) & B_v(t) \end{bmatrix}^T$
 
@@ -123,7 +140,7 @@ A given \texttt{Handwriting} instance has a list of characters defined by zero o
 \caption{A point inside of the red box may be inside any of $C_{al}$, $C_c$, $C_a$, or $C_l$.}
 \end{figure}
 
-To make the writing look more natural, we wish to have characters overlap. This may be specified with $h$ and $s$. If $h,s \in [0,0.5)$ then there will never be more than four characters present in any given point. Consider Fig.\,\ref{character-boxes}. Given that each colored box is $[0,1]^2$ and we overlay each character so that the overlap horizontally is $h$ and the overlap vertically is $s$, for each character $C$ we must also check the characters to the left, above, and diagonally above and to the left of $C$. We do not need to check the other surrounding characters because these will be checked if $(u,v)$ is in the first $[1-h] \times [1-s]$ box of the next character. For the center character $C_c$ this box is outlined with thick, red lines in Fig.\,\ref{character-boxes}.
+To make the writing look more natural, we wish to have characters overlap. This may be specified with $h$ and $s$. If $h,s \in [0,0.5)$ then there will never be more than four characters present in any given point. Consider Fig.~\ref{character-boxes}. Given that each colored box is $[0,1]^2$ and we overlay each character so that the overlap horizontally is $h$ and the overlap vertically is $s$, for each character $C$ we must also check the characters to the left, above, and diagonally above and to the left of $C$. We do not need to check the other surrounding characters because these will be checked if $(u,v)$ is in the first $[1-h] \times [1-s]$ box of the next character. For the center character $C_c$ this box is outlined with thick, red lines in Fig.~\ref{character-boxes}.
 
 Then, given some coordinate $(u,v)$ we transform the coordinate so we can determine which character box the point is contained in as well as where inside the box. This is achieved with the functions
 \begin{align}
@@ -132,7 +149,7 @@ Then, given some coordinate $(u,v)$ we transform the coordinate so we can determ
 	f_u(u) &= u + h \left\lfloor \frac{u - h}{1-h} \right\rfloor \label{fu} \\
 	f_v(v) &= v + s \left\lfloor \frac{v - s}{1-s} \right\rfloor \label{fv}
 \end{align}
-Equations \eqref{gu} and \eqref{gv} transform from a $(u,v)$ coordinate to the position in the overlapped characters, where the ingetral parts of $(g_u(u), g_v(v))$ determine the character and the decimal parts determine the coordinate in that character. However, this overlapping lattice may have multiple characters for a given point. Thus for each point $u,v$ we must check $(g_u(u), g_v(v))$, $(g_u(u), f_v(v))$, $(f_u(u), g_v(v))$, and $(f_u(u), f_v(v))$. These determine the coordinates inside of $C_c$, $C_a$, $C_l$, and $C_{al}$ from Fig.\,\ref{character-boxes}, respectively. The plots of \eqref{gu} and \eqref{fu} are shown in Fig.\,\ref{transformplot}. Notice this is only along one axis and there is overlap of these functions on the domain $n + [h, 1-h]$ for $n \in \{0, 1, 2, \dots \}$.
+Equations \eqref{gu} and \eqref{gv} transform from a $(u,v)$ coordinate to the position in the overlapped characters, where the ingetral parts of $(g_u(u), g_v(v))$ determine the character and the decimal parts determine the coordinate in that character. However, this overlapping lattice may have multiple characters for a given point. Thus for each point $u,v$ we must check $(g_u(u), g_v(v))$, $(g_u(u), f_v(v))$, $(f_u(u), g_v(v))$, and $(f_u(u), f_v(v))$. These determine the coordinates inside of $C_c$, $C_a$, $C_l$, and $C_{al}$ from Fig.~\ref{character-boxes}, respectively. The plots of \eqref{gu} and \eqref{fu} are shown in Fig.~\ref{transformplot}. Notice this is only along one axis and there is overlap of these functions on the domain $n + [h, 1-h]$ for $n \in \{0, 1, 2, \dots \}$.
 
 \begin{figure}[ht]
 \centering
@@ -155,11 +172,37 @@ Equations \eqref{gu} and \eqref{gv} transform from a $(u,v)$ coordinate to the p
 \end{figure}
 
 \section{Lessons Learned}
-This approach is rather complicated and limited. Using Equations \eqref{gu}--\eqref{fv}, characters must all have the same spacing between them. A more general approach would be to use traditional computer graphics methods and with each character associate a $3 \times 3$ transformation matrix. In general, this makes determining which characters to check at every point more difficult but a reasonable assumption with handwriting is the characters are roughly evenly-spaced. Thus, one could split up the image into a rectangular grid and each time a transformation is set, keep track of which boxes that character fits inside.
+This approach is rather complicated and limited. Using Equations \eqref{gu}--\eqref{fv}, characters must all have the same spacing between them. Furthermore, performing other improvements is difficult because those equations are required anywhere to transform from the texture space to the character space.
 
 \section{Future Work}
-The first approach to add generality to the \texttt{Handwriting} class would be to add the transformations described previously.
+The ideas outlined here are ordered by decreasing importance. Generalizing how characters are positioned on the surface is the most important because without it further improvements become increasingly difficult.
 
-This method relies on finding solutions to the polynomial \eqref{poly}. This gives arbitrary precision when sampling, but requires solving a fifth order polynomial at each pixel. This takes about 600 seconds to render a $512 \times 512$ image with an average of 4 B\'ezier curves per character. However, since we have the implicit equation for $B$ we may sample $B$ at arbitrary points to ``draw'' the curve much more efficiently; it is inexpensive to compute $B(t)$ and a normal to $B$. These provide enough information along with the value of $T$ to fill in the area around a given curve. Furthermore, this gives the benefit of providing the drawing of the curve as it would actually be drawn by hand. One could specify some increasing sequence of points $\{t_i\}_{i=1}^N$ where $t_i \in [0,1]$, and the line between the two edges could be drawn for each $B(t_i)$.
+\subsection{Generalizing Character Positioning}
+A more general approach to positioning the characters would be to use traditional computer graphics methods (see~\cite{pbrt}) and with each character associate a $3 \times 3$ transformation matrix. In general, this makes determining which characters to check at every point more difficult but a reasonable assumption with handwriting is the characters are roughly evenly-spaced. Thus, one could split up the image into a rectangular grid and each time a transformation is set, keep track of which boxes that character fits inside. This would be a good starting point to make future changes easier. This method is known as a grid acceleration structure and described in Chapter 4 of~\cite{pbrt}.
+
+Another generalization would be to join multiple B\'ezier curves. In characters such as ``z,'' there are sharp curves but the letter itself is still ultimately one stroke. This requires continuity but not smoothness of the first derivative. Some characters require first derivative continuity such as the character ``s.'' This should also be supported. Lastly, we would also like $T$ to be continuous across an entire stroke instead of just one B\'ezier curve. This models one ``stroke'' as multiple B\'ezier curves and represents one unbreaking line drawn by some writing utensil.
+
+\subsection{Adding Tunable Parameters}\label{generalize}
+Other methods exist for generating human-looking handwriting from a character sequence, such as the company Bond (\url{http://bond.co}) and generation of handwriting using Recurrent Neural Networks (\cite{Graves:2013:RNN}). There has been some work done procedurally generating handwriting (\url{http://bwiklund.github.io/roboglyphics/}). However, there is little apart from designing an entire typeface which can allow for a completely automated, arbitrarily precise script system. The ultimate goal is to provide artists with a tool with many tunable parameters to give a large space of possible handwriting styles. Whether these are to emulate an alien language or human language is undetermined.
+
+To accomplish this, more parameters should be implemented. The first would be the ability to connect characters together. This could better emulate cursive writing. For example, one could specify the mean, variance, minimum, and maximum word lengths to get a probability density of word lengths, which could in turn determine which characters to connect.
+
+A ``curviness'' paramter would be useful in determining the appearance of the langauge. A value of zero would be completely straight lines, while increasing this would tend the middle control points $p_1$ and $p_2$ away from the line between $p_0$ and $p_3$.
+
+Each handwritten character looks different. To add realism, a parameter could be specified which indicates how much each character is perturbed from its original specification. We wish to perturb the character such that it looks different but is still recognizable. This could consist of a weighted combination of the original character's control points with random control points. Other perturbations could be slight rotations, translations, shearing, and scaling. These could all be specified using the translation matrices described in Section~\ref{generalize}.
+
+\subsection{Writing Utensil Modeling}
+For a fountain pen, the thickness of the stroke depends on the minimum and maximum widths of the nib, the angle of the nib to the paper, and tangent of the stroke with the angle of the nib. For brushes, the amount of ink on the bristles and the force with which the brush is pressed also have an effect. These could be modeled by a given $T$ function. Noise could also be added so thickness would vary randomly along the curve.
+
+\subsection{Rendering Speed Improvements}
+This method relies on finding solutions to the polynomial \eqref{poly}. This gives arbitrary precision when sampling, but requires solving a fifth order polynomial at each pixel. This takes about 600 seconds to render a $512 \times 512$ image with an average of 4 B\'ezier curves per character. However, since we have the implicit equation for $B$ we may sample $B$ at arbitrary points to ``draw'' the curve much more efficiently; it is inexpensive to compute $B(t)$ and a normal to $B$. These provide enough information along with the value of $T$ to fill in the area around a given curve. Furthermore, this gives the benefit of providing the drawing of the curve as it would actually be drawn by hand. One could specify some increasing sequence of points $\{t_i\}_{i=1}^N$ where $t_i \in [0,1]$, and the line between the two borders could be drawn for each $B(t_i)$. This could also provide an interesting effect by serializing the drawing so the process of writing could be simulated.
+
+Another way the rendering speed could be increased is with OpenGL. A uniform buffer could be used to store every B\'ezier curve. Another uniform buffer could be used to store the grid acceleration structure. The fragment shader would get these buffers as well as the (u,v) coordinate and could check a limited number of curves to determine what to display.
+
+\subsection{Custom Characters}
+While this process would generate random characters, an artist may desire a more direct control over the look of the characters. This would also allow specifying existing languages. Then, this process could create random sequences of characters and perturb the characters in the methods described above.
+
+\bibliographystyle{acm}
+\bibliography{writeup}
 
 \end{document}
