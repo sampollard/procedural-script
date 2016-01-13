@@ -17,7 +17,7 @@ if __name__ == "__main__":
 else:
     main_dir = os.path.split(os.path.abspath(__file__))[0]
 
-xres,yres = (640,640)
+xres,yres = (640,480)
 
 def handleInput(screen):
     # Handle Keyboard and Mouse Events
@@ -95,10 +95,12 @@ def main():
     pygame.init()
     print("Press s to save, esc to exit")
     pygame.display.set_caption("Handwriting!")
-    stroke = bezier.Handwriting(
-            scale=4, brush=lambda t: 0.1*(1-t), min_s=2, max_s=5)
-    print(stroke)  # Print some information about the texture
-    draw_image_explicit(stroke.evaluate)
+    handwriting = bezier.Handwriting(
+            scale=3, aspect=float(xres)/float(yres),
+            brush=lambda t: 0.1*(1-t), min_s=2, max_s=5, unique_strokes=10,
+            unique_chars=5)
+    print(handwriting)  # Print some information about the texture
+    draw_image_explicit(handwriting.evaluate)
 
 if __name__ == '__main__':
     try:

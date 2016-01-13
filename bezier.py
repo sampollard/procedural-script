@@ -17,27 +17,76 @@ class Texture():
         """Determine the texture given u,v coordinates"""
         pass
 
+class BBox():
+    def __init__(self, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0):
+        self.xmin = xmin
+        self.xmax = xmax
+        self.ymin = ymin
+        self.ymax = ymax
+    def __repr__(self):
+        return "([{:.4f},{:.4f}], [{:.4f},{:.4f}])".format(
+                self.xmin, self.xmax, self.ymin, self.ymax)
+
+
 class Character():
-    """A character's strokes index into the control_points array."""
-    def __init__(self, control_points, strokes=None):
-        self.strokes = list(strokes) if strokes else []
-        self.control_points = control_points
+    """ Primarily a list of Bezier curves.
+        Assumes transform does not change after initialization.
+        BBox is in normalized coordinates (no transform applied)
+    """
+    @staticmethod
+    def T(T, stroke):
+        """Applies a 3x3 transformation matrix to each 2d point in stroke."""
+        b = np.array(stroke)
+        b = np.append(b, np.ones((len(stroke), 1)), axis=1)
+        Tb = np.dot(T, np.transpose(b))
+        return np.transpose(np.delete(Tb, 2, axis=0))
+
+    def __init__(self, strokes=None, transform=np.identity(3)):
+        self.transform = transform
+        if strokes:
+            self.strokes = list(strokes)
+            # Compute bounding box
+            xmin = 1.0
+            xmax = 0.0
+            ymin = 1.0
+            ymax = 0.0
+            for stroke in self.strokes:
+                xmin = min(xmin, min([p[0] for p in stroke]))
+                xmax = max(xmax, max([p[0] for p in stroke]))
+                ymin = min(ymin, min([p[1] for p in stroke]))
+                ymax = max(ymax, max([p[1] for p in stroke]))
+
+            self.bbox = BBox(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)
+            # TODO: Add max(brush(t)) so that the BBox doesn't cut things off.
+        else:
+            self.strokes = []
+            self.bbox = BBox()
 
     def __getitem__(self, index):
-        return self.strokes[index]
+        """ Turn the Bezier curve into homogeneous coordinates, apply
+            transformation, then convert back to normal coordinates.
+        """
+        return Character.T(self.transform, self.strokes[index])
 
     def __setitem__(self, index, item):
         self.strokes[index] = item
     
     def __repr__(self):
-        return repr(self.strokes)
+        cp_str = "[\n"
+        for stroke in self.strokes:
+            for p in stroke:
+                cp_str += " ({:.4f}, {:.4f})".format(p[0], p[1])
+            cp_str += "\n"
+        cp_str += "]"
+        return "T =\n{}\nStrokes = {}\nBBox = {}".format(
+            self.transform, cp_str, self.bbox)
 
     def append(self, s):
         self.strokes.append(s)
 
     def link_next(self, next_cp):
         """Link from this character's final stroke to next_cp."""
-        uv = list(self.control_points[self.strokes[-1]][3])
+        uv = list(self.strokes[-1][3])
         if next_cp:
             return  [uv,
                      [uv[0] + (next_cp[0] - uv[0]) / 3,
@@ -46,11 +95,11 @@ class Character():
                       min(uv[1], next_cp[1])],
                      list(next_cp)]
         else:
-            return []
+            return [] # XXX: Should this throw an exception?
 
     def link_prev(self, prev_cp):
         """Link from this character's first stroke to prev_cp."""
-        uv = list(self.control_points[self.strokes[-1]][0])
+        uv = list(self.strokes[-1][0])
         if prev_cp:
             return  [list(prev_cp),
                      [prev_cp[0] + (uv[0] - prev_cp[0]) / 3,
@@ -59,7 +108,7 @@ class Character():
                       min(uv[1], prev_cp[1])],
                      uv]
         else:
-            return []
+            return [] # XXX: Should this throw an exception?
     
     def stroke_list(self, prev_cp=None, next_cp=None):
         """Returns all the control points for each stroke."""
@@ -76,6 +125,40 @@ class Character():
             raise ValueError("amount must be in [0,1]")
         pass
 
+
+class Acceleration():
+    def overlap(self, u, v):
+        """ Determine which objects could potentially appear
+            at position (u,v).
+        """
+        pass
+
+class GridAcceleration(Acceleration):
+    def __init__(self, objs, xdivs=10, ydivs=10):
+        self.grid = []
+        self.xlattice = np.linspace(0.0, 1.0, xdivs, endpoint=False)
+        self.ylattice = np.linspace(0.0, 1.0, ydivs, endpoint=False)
+        self.xsep = 1.0 - self.xlattice[-1]
+        self.ysep = 1.0 - self.ylattice[-1]
+        for x in self.xlattice:
+            row = []
+            for y in self.ylattice:
+                cell = []
+                for o in objs:
+                    if not (o.bbox.xmax < x
+                            or o.bbox.ymax < y
+                            or o.bbox.xmin > x + self.xsep
+                            or o.bbox.ymin > y + self.ysep):
+                        cell.append(o)
+                row.append(cell)
+            self.grid.append(row)
+    
+    def overlap(self, u, v):
+        """Expects (u,v) to be normalized (in [0,1]^2)"""
+        xgrid = int(u / self.xsep) if u != 1.0 else self.xlattice[-1]
+        ygrid = int(v / self.ysep) if v != 1.0 else self.ylattice[-1]
+        return self.grid[xgrid][ygrid]
+
 class Handwriting(Texture):
     """ Explicit representation of a handwriting texture.
         Returns texture1 if the point (u,v) is inside the handwriting
@@ -86,7 +169,9 @@ class Handwriting(Texture):
         Input parameters:
         brush          Function to determine the width of the stroke.
                          May depend on the parameter of the spline.
-        scale          How many characters fit on one line.
+        scale          One character will be in a square with sides
+                         (1/scale, 1/scale) of screen width
+        aspect         The aspect ratio of the surface: width / height
         seed           The seed for the random number generator
         strokes        The number of unique strokes.
         unique_chars   The number of different characters. May increase
@@ -105,6 +190,7 @@ class Handwriting(Texture):
                  texture2=Texture(lambda u,v: (1,1,1)),
                  brush=lambda t: 0.1,
                  scale=1,
+                 aspect=1.0,
                  seed=0,
                  unique_strokes=30,
                  unique_chars=25,
@@ -114,9 +200,14 @@ class Handwriting(Texture):
                  h_stack=0.3,
                  h_border=0.2,
                  v_border=0.2):
+        # Ideas: Additional Parameters: Direction: l->r, r->l
+        
         # Validate parameters
-        # Greater than 0.5 means more than 2 characters may contained
-        # in a given box, complicating things.
+        # TODO: Change 0.5 to 1.0
+        if scale <= 0.0:
+            raise ValueError("scale must be positive")
+        if aspect <= 0.0:
+            raise ValueError("aspect must be positive")
         if not 0.0 <= v_stack <= 0.5:
             raise ValueError("v_stack must be in [0,0.5]")
         if not 0.0 <= h_stack <= 0.5:
@@ -129,16 +220,14 @@ class Handwriting(Texture):
         self.tex1 = texture1     # Inside bezier curve
         self.tex2 = texture2     # Outside bezier curve
         self.scale = scale
-        # unique_strokes = len(control_points) may increase when connect_p > 0.
         self.octaves = 9         # Accurate to dimension / 2^(octaves+1) pixels
-        self.eps = lambda t: brush(t) / self.scale
+        self.brush = lambda t: brush(t) / self.scale
         self.h_stack = h_stack
         self.v_stack = v_stack
 
-        # Create a random hash table to determine which and how many
-        # bezier curves are used for each character.
+        # Create a random hash table
         random.seed(seed)
-        hash_sz = 257  # Choose a prime number for the hash size
+        hash_sz = 257            # Choose a prime number for the hash size
         self.hash_table = list(range(hash_sz))
         random.shuffle(self.hash_table)
 
@@ -156,27 +245,57 @@ class Handwriting(Texture):
             s = [list(p) for p in [p0,p1,p2,p3]]
             self.control_points.append(s)
 
-        # Create each character. self.characters indexing goes
-        # [character][bezier curve][control point][uv coordinate]
-        # We keep track of how many times each stroke is used so
-        # strokes don't get changed twice
+        # Create each character archetype.
         self.characters = []
         used_strokes = {}
         stroke_counter = 0
         for i in range(unique_chars):
-            char = Character(self.control_points)
+            char = Character()
             for stroke in range(random.randint(min_s, max_s)):
-                char.append(self.hash_table[stroke_counter % hash_sz]
-                            % unique_strokes)
+                index = self.hash_table[stroke_counter % hash_sz] % unique_strokes
+                char.append(self.control_points[index])
                 stroke_counter += 1
                 try:
-                    used_strokes[char[-1]] += 1
+                    used_strokes[index] += 1
                 except KeyError:
-                    used_strokes[char[-1]] = 1
+                    used_strokes[index] = 1
             self.characters.append(char)
+
+        # Instance the characters.
+        # Determine their transformation and insert into the
+        # acceleration structure
+        u_trans = 0.0
+        v_trans = 0.0
+        transform = np.array(((1.0/self.scale, 0.0, u_trans),
+                              (0.0, 1.0/self.scale, v_trans),
+                              (0.0, 0.0, 1.0)))
+        charlist = []
+        for u in range(int(scale)):
+            for v in range(int(scale * aspect)):
+                char = Character(self.characters[self.hash_table[
+                        (u * int(scale) + v) % hash_sz] % unique_chars].strokes,
+                        transform)
+                charlist.append(char)
+                transform = np.copy(transform)
+                # TODO: Fix translation
+                transform[0][2] += self.h_stack / scale
+            transform[0][2] = 0.0
+            transform[1][2] += self.v_stack / scale
+        
+        for c in charlist:
+            print(c)
+        self.grid = GridAcceleration(charlist)
 
 
     def __repr__(self):
+        """ Computing the representation is O(cn) where n is the
+            number of characters and c is the number of control points.
+        """
+        def bezier_eq(b1, b2):
+            """Test if two bezier curves are equal."""
+            return all([p1[0] == p2[0] and p1[1] == p2[1] for
+                       (p1,p2) in zip(b1, b2)])
+
         cp_str = "[\n"
         for ind, cp in enumerate(self.control_points):
             cp_str += "{:3d}:".format(ind)
@@ -184,8 +303,24 @@ class Handwriting(Texture):
                 cp_str += " ({:.4f}, {:.4f})".format(p[0], p[1])
             cp_str += "\n"
         cp_str += "]"
+
+        char_str = "[\n"
+        for ind, char in enumerate(self.characters):
+            char_str += "{:3d}:(".format(ind)
+            for stroke in char.strokes:
+                for ind, cp in enumerate(self.control_points):
+                    found = False
+                    if bezier_eq(cp, stroke):
+                        found = True
+                        char_str += " {}".format(ind)
+                        break
+                if not found:
+                    char_str += " ({})".format(stroke)
+            char_str += " )\n"
+        char_str += "]"
+
         return "control_points: {}\ncharacters: {}\neps: {}".format(
-                cp_str, self.characters, inspect.getsource(self.eps).strip())
+                cp_str, char_str, inspect.getsource(self.brush).strip())
 
     def evaluate(self, u, v):
         """ The primary function. Determine whether the point is
@@ -196,11 +331,9 @@ class Handwriting(Texture):
         else:
             return self.tex2.evaluate(u,v)
 
-    def B(self, t, i):
+    def B(self, t, p):
         """Evaluate the ith bezier curve at t."""
-        p = i
-
-        # Get the coefficients using coeffs(collect(B),t) in Matlab
+        # Coefficients computed using coeffs(collect(B),t) in Matlab
         t2 = t*t
         t3 = t2*t
         return np.array((
@@ -218,7 +351,6 @@ class Handwriting(Texture):
 
     def inside_curve(self, u, v):
         """ Determine if the point (u,v) is inside of the bezier region.
-            via binary search
         """
         def norm2(x):
             """Computes the inner product of a 2d vector x with itself"""
@@ -254,13 +386,13 @@ class Handwriting(Texture):
                 if r.imag == 0.0:
                     t = r.real
                     if (0.0 <= t <= 1.0 and
-                           np.linalg.norm(uv - self.B(t,i)) < self.eps(t)
+                           np.linalg.norm(uv - self.B(t,i)) < self.brush(t)
                         ) or (
                         t > 1.0 and
-                            np.linalg.norm(uv-self.B(1.0,i)) < self.eps(1.0)
+                            np.linalg.norm(uv-self.B(1.0,i)) < self.brush(1.0)
                         ) or (
                         t < 0.0 and
-                            np.linalg.norm(uv-self.B(0.0,i)) < self.eps(0.0)):
+                            np.linalg.norm(uv-self.B(0.0,i)) < self.brush(0.0)):
                         return True
             return False
 
@@ -277,7 +409,7 @@ class Handwriting(Texture):
                 else:
                     t = t - sf
                 sf /= 2
-            if np.linalg.norm(uv - self.B(t,i)) < self.eps(t):
+            if np.linalg.norm(uv - self.B(t,i)) < self.brush(t):
                 return True
             else:
                 return False
@@ -290,94 +422,25 @@ class Handwriting(Texture):
                 (self.hash_table[int(math.floor(u)) % len(self.hash_table)] +
                 int(math.floor(v))) % len(self.hash_table)] % len(self.characters)
                 
-        def in_char(c, uv, prev_cp=None, next_cp=None):
+        def in_char(c, uv):
             """ Given a decimal position of the character, find out
                 if the point is in the character or any decorations.
             """
-            char = self.characters[c]
+            # TODO: Apply transformation
+            stroke_list = c.strokes
             return any([in_curve_exact(uv, val) for val in
-                       char.stroke_list(prev_cp, next_cp)])
-        
-        def connect_next(u, v):
-            """ Find the control point to which the current character
-                will connect and translate into the current character's
-                coordinates.
-            """
-            c = get_char_index(u + 1 - self.h_stack, v)
-            (nu, nv) = self.control_points[c][0]
-            return (nu + 1 - self.h_stack, nv)
-        
-        def connect_prev(u,v):
-            """Like connect_next but going to the previous character."""
-            c = get_char_index(u - 1 + self.h_stack, v)
-            (pu, pv) = self.control_points[c][3]
-            return (pu - 1 + self.h_stack, pv)
+                       stroke_list])
 
-        oneminus_h = 1.0 - self.h_stack
-        oneminus_v = 1.0 - self.v_stack
-        def scale_u(u):
-            su = self.scale * u
-            return su + self.h_stack * math.floor(su / (1 - self.h_stack))
-
-        def scale_v(v):
-            sv = self.scale * v
-            return sv + self.v_stack * math.floor(sv / (1 - self.v_stack))
-
-            
-        def shift_u(u):
-            su = self.scale * u
-            h = self.h_stack
-            return su + h * math.floor((su-h) / (1-h))
-
-        def shift_v(v):
-            sv = self.scale * v
-            s = self.v_stack
-            return sv + s * math.floor((sv - s) / (1 - s))
-
-        scaled_u = scale_u(u)
-        scaled_v = scale_v(v)
-        shifted_u = shift_u(u)
-        shifted_v = shift_v(v)
-
-        # cc: center, cl: left, ca: above, cal: above and to the left
-        cc = get_char_index(scaled_u, scaled_v)
-        uvc = np.array((scaled_u % 1, scaled_v % 1))
-        cl = get_char_index(shifted_u, scaled_v)
-        uvl = np.array((shifted_u % 1, scaled_v % 1))
-        ca = get_char_index(scaled_u, shifted_v)
-        uva = np.array((scaled_u  % 1, shifted_v % 1))
-        cal = get_char_index(shifted_u, shifted_v)
-        uval = np.array((shifted_u % 1, shifted_v % 1))
-
-        # Check which of the four surrounding characters may occur.
-        # We don't draw characters that can't fit entirely in the surface.
-        in_cal = True
-        if (scaled_u + 1 - self.h_stack >= scale_u(1.0)
-                or scaled_v + 1 - self.v_stack >= scale_v(1.0)):
-            in_cc = False
+        ### inside_curve body
+        # Use the acceleration structure to determine which
+        # character(s) to check, then check each stroke in each character.
+        chars = self.grid.overlap(u, v)
+        if not chars:
+            return False
         else:
-            in_cc = in_char(cc, uvc)
+            return any([in_char(c, (u, v)) for c in chars])
 
-        if (shifted_u < 0.0
-                or shifted_u + 1 - self.h_stack >= shift_u(1.0)
-                or scaled_v + 1 - self.v_stack >= scale_v(1.0)):
-            in_cl = False
-            in_cal = False
-        else:
-            in_cl = in_char(cl, uvl)
-
-        if (shifted_v < 0.0
-                or scaled_u + 1 - self.h_stack >= scale_u(1.0)
-                or shifted_v + 1 - self.v_stack >= shift_v(1.0)):
-            in_ca = False
-            in_cal = False
-        else:
-            in_ca = in_char(ca, uva)
-
-        if in_cal:
-            in_cal = in_char(cal, uval)
-        return (in_cc or in_cl or in_ca or in_cal)
 
 if __name__ == '__main__':
-    h = Handwriting()
+    h = Handwriting(scale=3, aspect=0.5)
     print(h)
