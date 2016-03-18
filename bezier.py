@@ -27,20 +27,18 @@ class BBox():
         return "([{:.4f},{:.4f}], [{:.4f},{:.4f}])".format(
                 self.xmin, self.xmax, self.ymin, self.ymax)
 
+def T(T, stroke):
+    """Applies a 3x3 transformation matrix to each 2d point in stroke."""
+    b = np.array(stroke)
+    b = np.append(b, np.ones((len(stroke), 1)), axis=1)
+    Tb = np.dot(T, np.transpose(b))
+    return np.transpose(np.delete(Tb, 2, axis=0))
 
 class Character():
     """ Primarily a list of Bezier curves.
         Assumes transform does not change after initialization.
         BBox is in normalized coordinates (no transform applied)
     """
-    @staticmethod
-    def T(T, stroke):
-        """Applies a 3x3 transformation matrix to each 2d point in stroke."""
-        b = np.array(stroke)
-        b = np.append(b, np.ones((len(stroke), 1)), axis=1)
-        Tb = np.dot(T, np.transpose(b))
-        return np.transpose(np.delete(Tb, 2, axis=0))
-
     def __init__(self, strokes=None, transform=np.identity(3)):
         self.transform = transform
         if strokes:
@@ -51,10 +49,10 @@ class Character():
             ymin = 1.0
             ymax = 0.0
             for stroke in self.strokes:
-                xmin = min(xmin, min([p[0] for p in stroke]))
-                xmax = max(xmax, max([p[0] for p in stroke]))
-                ymin = min(ymin, min([p[1] for p in stroke]))
-                ymax = max(ymax, max([p[1] for p in stroke]))
+                xmin = min(xmin, min([p[0] for p in T(self.transform,stroke)]))
+                xmax = max(xmax, max([p[0] for p in T(self.transform,stroke)]))
+                ymin = min(ymin, min([p[1] for p in T(self.transform,stroke)]))
+                ymax = max(ymax, max([p[1] for p in T(self.transform,stroke)]))
 
             self.bbox = BBox(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)
             # TODO: Add max(brush(t)) so that the BBox doesn't cut things off.
@@ -66,7 +64,7 @@ class Character():
         """ Turn the Bezier curve into homogeneous coordinates, apply
             transformation, then convert back to normal coordinates.
         """
-        return Character.T(self.transform, self.strokes[index])
+        return T(self.transform, self.strokes[index])
 
     def __setitem__(self, index, item):
         self.strokes[index] = item
@@ -157,6 +155,8 @@ class GridAcceleration(Acceleration):
         """Expects (u,v) to be normalized (in [0,1]^2)"""
         xgrid = int(u / self.xsep) if u != 1.0 else self.xlattice[-1]
         ygrid = int(v / self.ysep) if v != 1.0 else self.ylattice[-1]
+        # TODO: Prevent partial characters at the edges from showing up
+        # Thought: Unless you wanted some tiling...
         return self.grid[xgrid][ygrid]
 
 class Handwriting(Texture):
@@ -278,9 +278,9 @@ class Handwriting(Texture):
                 charlist.append(char)
                 transform = np.copy(transform)
                 # TODO: Fix translation
-                transform[0][2] += self.h_stack / scale
+                transform[0][2] += self.h_stack# / scale
             transform[0][2] = 0.0
-            transform[1][2] += self.v_stack / scale
+            transform[1][2] += self.v_stack#  / scale
         
         for c in charlist:
             print(c)
@@ -418,18 +418,16 @@ class Handwriting(Texture):
             """ Given a scaled u,v coordinate, take the integer parts
                 to choose which character goes with that coordinate.
             """
-            return self.hash_table[
-                (self.hash_table[int(math.floor(u)) % len(self.hash_table)] +
-                int(math.floor(v))) % len(self.hash_table)] % len(self.characters)
+            return (self.hash_table[
+                    (self.hash_table[int(math.floor(u)) % len(self.hash_table)]
+                    + int(math.floor(v))) % len(self.hash_table)]
+                    % len(self.characters))
                 
         def in_char(c, uv):
             """ Given a decimal position of the character, find out
                 if the point is in the character or any decorations.
             """
-            # TODO: Apply transformation
-            stroke_list = c.strokes
-            return any([in_curve_exact(uv, val) for val in
-                       stroke_list])
+            return any([in_curve_exact(uv, val) for val in c])
 
         ### inside_curve body
         # Use the acceleration structure to determine which

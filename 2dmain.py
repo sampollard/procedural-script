@@ -97,7 +97,7 @@ def main():
     pygame.display.set_caption("Handwriting!")
     handwriting = bezier.Handwriting(
             scale=3, aspect=float(xres)/float(yres),
-            brush=lambda t: 0.1*(1-t), min_s=2, max_s=5, unique_strokes=10,
+            brush=lambda t: 0.05*(1-t), min_s=2, max_s=5, unique_strokes=10,
             unique_chars=5)
     print(handwriting)  # Print some information about the texture
     draw_image_explicit(handwriting.evaluate)
